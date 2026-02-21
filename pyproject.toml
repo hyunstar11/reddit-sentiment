@@ -34,6 +34,13 @@ dev = [
     "pytest-cov>=4.1",
     "ruff>=0.1",
 ]
+dashboard = [
+    "streamlit>=1.32",
+]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
 
 [project.scripts]
 reddit-sentiment = "reddit_sentiment.cli:cli"
@@ -52,3 +59,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["B905", "UP042"]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+    "nbconvert>=7.17.0",
+    "nbformat>=5.10.4",
+]

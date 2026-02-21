@@ -46,7 +46,7 @@ class CollectionConfig(BaseSettings):
             "Nike",
             "Adidas",
             "Yeezy",
-            "FashionReps",
+            "Jordans",
             "malefashionadvice",
             "Running",
             "Basketball",

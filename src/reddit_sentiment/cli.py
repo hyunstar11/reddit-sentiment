@@ -29,10 +29,31 @@ def cli() -> None:
     default=False,
     help="Use public JSON API (no credentials required)",
 )
-def collect(output: str | None, subreddits: tuple[str, ...], public: bool) -> None:
-    """Fetch posts from Reddit → data/raw/*.parquet
+@click.option(
+    "--no-comments",
+    "skip_comments",
+    is_flag=True,
+    default=False,
+    help="Skip comment collection (faster; public mode only)",
+)
+@click.option(
+    "--max-comment-posts",
+    default=20,
+    show_default=True,
+    help="Max posts per subreddit to enrich with comments (public mode only)",
+)
+def collect(
+    output: str | None,
+    subreddits: tuple[str, ...],
+    public: bool,
+    skip_comments: bool,
+    max_comment_posts: int,
+) -> None:
+    """Fetch posts (and comments) from Reddit → data/raw/*.parquet
 
     Use --public to collect without API credentials (uses Reddit's public JSON API).
+    Comments are collected by default for the top-scoring posts; use --no-comments
+    for a faster post-only run.
     """
     cfg = CollectionConfig()
     if subreddits:
@@ -43,16 +64,25 @@ def collect(output: str | None, subreddits: tuple[str, ...], public: bool) -> No
     if public:
         from reddit_sentiment.collection.public_collector import PublicSubredditCollector
         collector = PublicSubredditCollector(config=cfg)
+        try:
+            result = collector.collect(
+                output_path=out_path,
+                collect_comments=not skip_comments,
+                max_comment_posts=max_comment_posts,
+            )
+        except Exception as exc:
+            click.echo(f"Collection failed: {exc}", err=True)
+            sys.exit(1)
     else:
         from reddit_sentiment.collection.collector import SubredditCollector
-        collector = SubredditCollector(config=cfg)  # type: ignore[assignment]
+        praw_collector = SubredditCollector(config=cfg)
+        try:
+            result = praw_collector.collect(output_path=out_path)
+        except Exception as exc:
+            click.echo(f"Collection failed: {exc}", err=True)
+            sys.exit(1)
 
-    try:
-        result = collector.collect(output_path=out_path)
-        click.echo(f"Saved: {result}")
-    except Exception as exc:
-        click.echo(f"Collection failed: {exc}", err=True)
-        sys.exit(1)
+    click.echo(f"Saved: {result}")
 
 
 @cli.command()
@@ -139,7 +169,7 @@ def report(input_path: str | None) -> None:
     "--models",
     "-m",
     multiple=True,
-    help="Specific model names to collect (default: all detected models from latest annotated data)",
+    help="Shoe model names to collect (default: all detected models from latest annotated data)",
 )
 def ebay_collect(output: str | None, models: tuple[str, ...]) -> None:
     """Fetch eBay sold listings for shoe models → data/raw/ebay_*.parquet
@@ -207,10 +237,11 @@ def pipeline(no_transformer: bool, public: bool) -> None:
     if public:
         from reddit_sentiment.collection.public_collector import PublicSubredditCollector
         collector = PublicSubredditCollector()
+        raw_path = collector.collect(collect_comments=True)
     else:
         from reddit_sentiment.collection.collector import SubredditCollector
         collector = SubredditCollector()
-    raw_path = collector.collect()
+        raw_path = collector.collect()
 
     click.echo("=== Step 2/3: Analyze ===")
     import pandas as pd
@@ -227,6 +258,52 @@ def pipeline(no_transformer: bool, public: bool) -> None:
     generator = ReportGenerator(reports_dir=cfg.reports_dir)
     html_path, md_path = generator.generate(annotated)
     click.echo(f"Done! Report: {html_path}")
+
+
+@cli.command()
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind host")
+@click.option("--port", default=8000, show_default=True, help="Port for the API server")
+@click.option("--reload", is_flag=True, default=False, help="Auto-reload on code changes (dev)")
+def serve(host: str, port: int, reload: bool) -> None:
+    """Launch the FastAPI REST server.
+
+    Install the [api] extra first: uv sync --extra api
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        click.echo("uvicorn not installed. Run: uv sync --extra api", err=True)
+        sys.exit(1)
+
+    click.echo(f"Starting API server at http://{host}:{port}")
+    click.echo(f"Docs: http://{host}:{port}/docs")
+    uvicorn.run(
+        "reddit_sentiment.api.app:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
+
+
+@cli.command()
+@click.option("--port", default=8501, show_default=True, help="Port to run the dashboard on")
+@click.option("--browser/--no-browser", default=True, help="Open browser automatically")
+def dashboard(port: int, browser: bool) -> None:
+    """Launch the interactive Streamlit dashboard."""
+    import subprocess
+
+    app_path = Path(__file__).parent / "dashboard" / "app.py"
+    if not app_path.exists():
+        click.echo(f"Dashboard not found at {app_path}", err=True)
+        sys.exit(1)
+
+    cmd = [
+        sys.executable, "-m", "streamlit", "run", str(app_path),
+        "--server.port", str(port),
+        "--server.headless", "false" if browser else "true",
+    ]
+    click.echo(f"Starting dashboard on http://localhost:{port}")
+    subprocess.run(cmd, check=False)
 
 
 if __name__ == "__main__":

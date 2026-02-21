@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from reddit_sentiment.collection.schemas import RedditPost
+from reddit_sentiment.collection.schemas import RedditComment, RedditPost
 from reddit_sentiment.config import CollectionConfig
 
 _URL_RE = re.compile(r"https?://[^\s\)\]>\"']+")
@@ -51,13 +51,30 @@ def _parse_post_json(data: dict, subreddit: str) -> RedditPost:
     )
 
 
+def _parse_comment_json(data: dict, post_id: str, subreddit: str) -> RedditComment:
+    body = data.get("body") or ""
+    return RedditComment(
+        id=data["id"],
+        post_id=post_id,
+        subreddit=subreddit,
+        body=body,
+        author=data.get("author") or "[deleted]",
+        score=data.get("score", 0),
+        created_utc=datetime.fromtimestamp(data["created_utc"], tz=UTC),
+        permalink=data.get("permalink", ""),
+        parent_id=data.get("parent_id", ""),
+        depth=data.get("depth", 0),
+        extracted_urls=_extract_urls(body),
+    )
+
+
 class PublicSubredditCollector:
-    """Collect posts from subreddits using Reddit's public JSON API.
+    """Collect posts and comments from subreddits using Reddit's public JSON API.
 
     No API credentials required. Uses pagination (after token) to collect
     up to posts_per_subreddit posts per subreddit across configured sort methods.
-    Comments are skipped to minimise request count; post titles + selftexts
-    provide sufficient text for sentiment analysis.
+    Comments are fetched for the highest-scoring posts to maximise signal richness
+    while keeping total request count manageable.
     """
 
     def __init__(self, config: CollectionConfig | None = None) -> None:
@@ -112,12 +129,63 @@ class PublicSubredditCollector:
 
         return records
 
+    def _fetch_comments(self, subreddit: str, post_id: str, limit: int) -> list[dict]:
+        """Fetch top-level comments for a single post via the public JSON API.
+
+        Hits ``/r/{subreddit}/comments/{post_id}.json`` which returns a two-element
+        list: ``[post_listing, comment_listing]``.  Only ``kind == "t1"`` children
+        (actual comments) are returned; ``"more"`` stubs are skipped.
+        """
+        url = f"{_BASE}/r/{subreddit}/comments/{post_id}.json"
+        params = {"limit": min(limit, 500), "depth": 1, "raw_json": 1}
+
+        try:
+            resp = self._session.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            payload = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            print(f"  [!] comment fetch failed for {post_id}: {exc}")
+            return []
+
+        # payload is [post_listing, comment_listing]
+        if not isinstance(payload, list) or len(payload) < 2:
+            return []
+
+        children = payload[1].get("data", {}).get("children", [])
+        records: list[dict] = []
+        for child in children:
+            if child.get("kind") != "t1":
+                continue
+            data = child.get("data", {})
+            body = data.get("body", "").strip()
+            if not body or body in ("[deleted]", "[removed]"):
+                continue
+            try:
+                comment = _parse_comment_json(data, post_id, subreddit)
+                records.append(comment.to_dict())
+            except (KeyError, TypeError, ValueError):
+                continue
+
+        return records
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def collect(self, output_path: Path | None = None) -> Path:
-        """Collect all configured subreddits; return path to saved Parquet file."""
+    def collect(
+        self,
+        output_path: Path | None = None,
+        collect_comments: bool = True,
+        max_comment_posts: int = 20,
+    ) -> Path:
+        """Collect all configured subreddits; return path to saved Parquet file.
+
+        Args:
+            output_path: Where to write the Parquet file.
+            collect_comments: If True, fetch comments for the top-scoring posts.
+            max_comment_posts: Number of posts per subreddit to enrich with comments
+                (sorted by score descending).  Ignored when collect_comments=False.
+        """
         timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
         if output_path is None:
             output_path = self._cfg.raw_data_dir / f"posts_{timestamp}.parquet"
@@ -138,6 +206,21 @@ class PublicSubredditCollector:
                         sub_records.append(r)
                 print(f"  {sort}: {len(records)} posts")
                 time.sleep(_REQUEST_DELAY)
+
+            # Enrich top posts with comments
+            if collect_comments and sub_records:
+                top_posts = sorted(sub_records, key=lambda r: r.get("score", 0), reverse=True)
+                top_posts = [p for p in top_posts if p.get("num_comments", 0) > 0]
+                top_posts = top_posts[:max_comment_posts]
+                comment_count = 0
+                for post in top_posts:
+                    comments = self._fetch_comments(
+                        sub_name, post["id"], self._cfg.comments_per_post
+                    )
+                    sub_records.extend(comments)
+                    comment_count += len(comments)
+                    time.sleep(_REQUEST_DELAY)
+                print(f"  comments: {comment_count} from {len(top_posts)} posts")
 
             all_records.extend(sub_records)
             print(f"  total unique: {len(sub_records)}")

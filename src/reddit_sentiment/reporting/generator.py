@@ -11,8 +11,8 @@ from jinja2 import Environment, FileSystemLoader
 from reddit_sentiment.analysis.brand_comparison import BrandComparisonAnalyzer
 from reddit_sentiment.analysis.channel_attribution import ChannelAttributionAnalyzer
 from reddit_sentiment.analysis.narrative import NarrativeThemeExtractor
-from reddit_sentiment.analysis.trends import SentimentTrendAnalyzer
 from reddit_sentiment.analysis.price_correlation import PriceCorrelationAnalyzer
+from reddit_sentiment.analysis.trends import SentimentTrendAnalyzer
 from reddit_sentiment.reporting.charts import (
     brand_sentiment_bar,
     channel_share_pie,
@@ -96,7 +96,11 @@ class ReportGenerator:
         corr_analyzer = PriceCorrelationAnalyzer()
         ebay_df = self._load_ebay_data()
         corr_result = corr_analyzer.analyze(df, ebay_df)
-        corr_table = corr_result.summary_df.to_dict("records") if not corr_result.summary_df.empty else []
+        corr_table = (
+            corr_result.summary_df.to_dict("records")
+            if not corr_result.summary_df.empty
+            else []
+        )
 
         # ------------------------------------------------------------------
         # Render charts

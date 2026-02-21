@@ -36,10 +36,14 @@ class BrandComparisonAnalyzer:
     POSITIVE_THRESHOLD = 0.05
     NEGATIVE_THRESHOLD = -0.05
 
-    def compute(self, df: pd.DataFrame) -> dict[str, BrandMetrics]:
+    def compute(self, df: pd.DataFrame, min_mentions: int = 5) -> dict[str, BrandMetrics]:
         """Return brand → BrandMetrics mapping.
 
         Expected columns: brands (list), hybrid_score, vader_score, score, subreddit.
+
+        Args:
+            df: Annotated DataFrame.
+            min_mentions: Exclude brands with fewer than this many mentions.
         """
         if df.empty:
             return {}
@@ -50,6 +54,8 @@ class BrandComparisonAnalyzer:
 
         metrics: dict[str, BrandMetrics] = {}
         for brand, group in exploded.groupby("brand"):
+            if len(group) < min_mentions:
+                continue
             n = len(group)
             hybrid = group["hybrid_score"].fillna(0.0)
             vader = group["vader_score"].fillna(0.0)
@@ -79,9 +85,9 @@ class BrandComparisonAnalyzer:
 
         return metrics
 
-    def comparison_table(self, df: pd.DataFrame) -> pd.DataFrame:
+    def comparison_table(self, df: pd.DataFrame, min_mentions: int = 5) -> pd.DataFrame:
         """Return a tidy DataFrame sorted by avg_hybrid_score descending."""
-        metrics = self.compute(df)
+        metrics = self.compute(df, min_mentions=min_mentions)
         rows = [
             {
                 "brand": m.brand,
