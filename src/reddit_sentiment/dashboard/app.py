@@ -423,6 +423,8 @@ def _tab_themes(narrative) -> None:
 
 
 def _tab_models(corr_result, has_ebay: bool) -> None:
+    import plotly.express as px
+
     from reddit_sentiment.reporting.charts import model_mentions_bar, sentiment_price_scatter
 
     if not corr_result.signals:
@@ -432,27 +434,73 @@ def _tab_models(corr_result, has_ebay: bool) -> None:
         )
         return
 
+    # Top-model KPI strip
+    top3 = corr_result.signals[:3]
+    cols = st.columns(len(top3))
+    for col, sig in zip(cols, top3):
+        label = "Positive" if sig.avg_sentiment > 0.05 else (
+            "Negative" if sig.avg_sentiment < -0.05 else "Neutral"
+        )
+        col.metric(sig.model, f"{sig.mention_count} mentions", label)
+
+    st.divider()
     _render(model_mentions_bar(corr_result.signals))
 
     if not corr_result.summary_df.empty:
         st.divider()
-        st.subheader("Model signals table")
-        display_df = corr_result.summary_df.copy()
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "avg_sentiment": st.column_config.NumberColumn(format="%+.4f"),
-                "price_premium_%": st.column_config.NumberColumn(format="%.1f%%"),
-            },
+        st.subheader("Model signals")
+
+        # Show eBay columns only when data is available
+        reddit_cols = ["model", "brand", "retail_price", "mentions",
+                       "avg_sentiment", "positive_%", "negative_%"]
+        ebay_cols = ["num_sales", "avg_sold_price", "price_premium_%"]
+        display_cols = reddit_cols + ebay_cols if has_ebay else reddit_cols
+        display_df = corr_result.summary_df[display_cols].copy()
+
+        col_cfg = {
+            "avg_sentiment": st.column_config.NumberColumn(format="%+.4f"),
+            "positive_%": st.column_config.ProgressColumn(
+                format="%.1f%%", min_value=0, max_value=100
+            ),
+            "negative_%": st.column_config.ProgressColumn(
+                format="%.1f%%", min_value=0, max_value=100
+            ),
+        }
+        if has_ebay:
+            col_cfg["price_premium_%"] = st.column_config.NumberColumn(format="%.1f%%")
+
+        st.dataframe(display_df, use_container_width=True, hide_index=True,
+                     column_config=col_cfg)
+
+        # Sentiment breakdown bar chart per model (top 10)
+        st.divider()
+        st.subheader("Positive vs. Negative breakdown (top 10 models)")
+        top10 = corr_result.summary_df.nlargest(10, "mentions")
+        breakdown = pd.DataFrame([
+            {"model": r["model"], "type": "Positive", "pct": r["positive_%"]},
+            {"model": r["model"], "type": "Negative", "pct": r["negative_%"]},
+        ] for _, r in top10.iterrows()).explode("model")  # noqa: PD010
+        breakdown = pd.concat([
+            pd.DataFrame({"model": r["model"], "type": t, "pct": v}, index=[0])
+            for _, r in top10.iterrows()
+            for t, v in [("Positive", r["positive_%"]), ("Negative", r["negative_%"])]
+        ])
+        fig = px.bar(
+            breakdown,
+            x="pct", y="model", color="type", orientation="h",
+            barmode="group",
+            color_discrete_map={"Positive": "#22c55e", "Negative": "#ef4444"},
+            labels={"pct": "%", "model": "", "type": ""},
+            title="Sentiment Split per Model",
         )
+        fig.update_layout(height=420, plot_bgcolor="white",
+                          margin=dict(l=10, r=40, t=50, b=10))
+        st.plotly_chart(fig, width="stretch")
 
     if has_ebay:
         st.divider()
         st.subheader("Sentiment vs. Resale Premium")
-        chart = sentiment_price_scatter(corr_result.signals)
-        _render(chart)
+        _render(sentiment_price_scatter(corr_result.signals))
         if corr_result.correlation_sentiment_premium is not None:
             r = corr_result.correlation_sentiment_premium
             interp = "positive" if r > 0.3 else "negative" if r < -0.3 else "weak"
@@ -462,8 +510,8 @@ def _tab_models(corr_result, has_ebay: bool) -> None:
             )
     else:
         st.info(
-            "eBay price data not yet collected. "
-            "Run `reddit-sentiment ebay-collect` to populate resale premiums."
+            "eBay resale premiums not yet collected. "
+            "Run `reddit-sentiment ebay-collect` after setting `EBAY_APP_ID` in `.env`."
         )
 
 
