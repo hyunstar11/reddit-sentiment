@@ -1,5 +1,7 @@
 # Reddit Sneaker Sentiment Analysis
 
+**[Live Demo →](https://reddit-sneaker-sentiment.streamlit.app)**
+
 A standalone NLP pipeline that collects public Reddit discussions from sneaker communities and extracts **brand sentiment**, **retail channel attribution**, and **purchase intent signals** across major footwear brands.
 
 Part of a two-project portfolio system — pairs with [sneaker-intel](https://github.com/hyunstar11/sneaker-intel), an ML demand forecasting platform. See [Integration with sneaker-intel](#integration-with-sneaker-intel).
@@ -105,7 +107,7 @@ reddit-sentiment/
 │   ├── dashboard/
 │   │   └── app.py                  # Streamlit dashboard (5 tabs, sidebar filters)
 │   └── cli.py                      # Click CLI: collect|analyze|report|pipeline|dashboard
-└── tests/                          # 150 tests, all passing
+└── tests/                          # 170 tests, all passing
 ```
 
 ### Sentiment Scoring
@@ -153,16 +155,19 @@ make install-ml
 ### CLI Reference
 
 ```bash
-reddit-sentiment collect    [--output PATH] [--subreddits r1 r2 ...] [--public]
-                            [--no-comments] [--max-comment-posts N]
-reddit-sentiment analyze    [--input PATH] [--output PATH] [--no-transformer]
-reddit-sentiment report     [--input PATH]
-reddit-sentiment pipeline   [--no-transformer] [--public]
-reddit-sentiment dashboard  [--port 8501] [--no-browser]
+reddit-sentiment collect      [--output PATH] [--subreddits r1 r2 ...] [--public]
+                              [--no-comments] [--max-comment-posts N]
+reddit-sentiment analyze      [--input PATH] [--output PATH] [--no-transformer]
+reddit-sentiment report       [--input PATH]
+reddit-sentiment pipeline     [--no-transformer] [--public]
+reddit-sentiment dashboard    [--port 8501] [--no-browser]
+reddit-sentiment serve        [--host 127.0.0.1] [--port 8000] [--reload]
 reddit-sentiment ebay-collect [--models M1 M2 ...]
 ```
 
 ### Interactive Dashboard
+
+**[Live: reddit-sneaker-sentiment.streamlit.app](https://reddit-sneaker-sentiment.streamlit.app)**
 
 ```bash
 make install-dashboard   # installs streamlit
@@ -176,34 +181,35 @@ The dashboard provides live-filtered views of all analyses:
 
 ---
 
-## Sample Findings (Feb 2026, 2,461 posts — clean data, no replica subreddits)
+## Sample Findings (Feb 2026, 4,985 records — 2,029 posts + 2,956 comments, 7 subreddits)
 
 ### Brand Sentiment Rankings
 
 | Brand | Mentions | Avg Sentiment | Positive% | Negative% |
 |-------|----------|--------------|-----------|-----------|
-| Nike | 475 | +0.211 | 50.9% | 22.1% |
-| Adidas | 231 | +0.257 | 51.9% | 19.9% |
-| New Balance | 33 | +0.123 | 48.5% | 24.2% |
-| Asics | 7 | +0.443 | 71.4% | 0.0% |
+| Nike | 620 | +0.198 | 49.8% | 23.1% |
+| Adidas | 263 | +0.255 | 52.1% | 20.2% |
+| New Balance | 36 | +0.162 | 52.8% | 22.2% |
+| Asics | 8 | +0.387 | 62.5% | 0.0% |
 
 ### Top Retail Channels
 
-eBay · Undefeated · GOAT · Kith · Amazon
+eBay (31.8%) · GOAT (11.2%) · Undefeated (10.6%) · Foot Locker (8.8%) · StockX (6.5%)
 
 ### Purchase Intent Funnel
 
 | Stage | Count |
 |-------|-------|
-| Marketplace activity (WTS/WTB) | 284 |
-| Actively seeking purchase | 110 |
-| Completed purchase | 81 |
-| Considering purchase | 25 |
-| Availability / drop info | 16 |
+| Marketplace activity (WTS/WTB) | 305 |
+| Completed purchase | 105 |
+| Actively seeking purchase | 91 |
+| Selling | 34 |
+| Availability / drop info | 33 |
+| Considering purchase | 27 |
 
 ### Dominant Narrative Themes
 
-Aesthetics & Design (24.8%) · Brand Loyalty (16.8%) · Quality & Comfort (15.1%) · Authenticity & Fakes (14.6%) · Hype & Exclusivity (12.7%)
+Aesthetics & Design (19.2%) · Quality & Comfort (9.8%) · Hype & Exclusivity (9.4%) · Value & Pricing (8.5%) · Authenticity & Fakes (7.6%)
 
 ---
 
@@ -254,7 +260,7 @@ A companion Markdown summary is also generated.
 ## Development
 
 ```bash
-make test             # run 150 tests
+make test             # run 170 tests
 make test-cov         # with coverage report
 make lint             # ruff check + format check
 make lint-fix         # auto-fix lint issues
