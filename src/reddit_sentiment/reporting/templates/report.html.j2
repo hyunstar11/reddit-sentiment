@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reddit Sneaker Sentiment Report — {{ report_date }}</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      color: #f8fafc;
+      padding: 2rem 3rem;
+    }
+    header h1 { margin: 0 0 0.25rem; font-size: 1.75rem; }
+    header p  { margin: 0; color: #94a3b8; font-size: 0.95rem; }
+    main { max-width: 1200px; margin: 0 auto; padding: 2rem 3rem; }
+    section { margin-bottom: 3rem; }
+    h2 {
+      font-size: 1.25rem;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 0.4rem;
+      margin-bottom: 1.25rem;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+      padding: 1rem 1.25rem;
+    }
+    .stat-card .value { font-size: 2rem; font-weight: 700; color: #0f172a; }
+    .stat-card .label { font-size: 0.8rem; color: #64748b; margin-top: 0.15rem; }
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 1.5rem;
+    }
+    .chart-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+      padding: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      font-size: 0.9rem;
+    }
+    th {
+      background: #f1f5f9;
+      padding: 0.6rem 0.8rem;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    td {
+      padding: 0.55rem 0.8rem;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    .positive { color: #16a34a; font-weight: 600; }
+    .negative { color: #dc2626; font-weight: 600; }
+    .neutral  { color: #64748b; font-weight: 600; }
+    .chip {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .chip-hype    { background: #fef9c3; color: #854d0e; }
+    .chip-quality { background: #dcfce7; color: #166534; }
+    .chip-value   { background: #dbeafe; color: #1e40af; }
+    .chip-aesthetic { background: #fce7f3; color: #9d174d; }
+    .chip-perf    { background: #ede9fe; color: #5b21b6; }
+    footer {
+      text-align: center;
+      padding: 1.5rem;
+      color: #94a3b8;
+      font-size: 0.8rem;
+      border-top: 1px solid #e2e8f0;
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Reddit Sneaker Sentiment Report</h1>
+  <p>Generated {{ report_date }} &bull; {{ total_posts }} posts &bull; {{ total_comments }} comments &bull; {{ subreddits|length }} subreddits</p>
+</header>
+
+<main>
+
+  <!-- Summary Stats -->
+  <section>
+    <h2>Dataset Summary</h2>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="value">{{ total_records }}</div>
+        <div class="label">Total Records</div>
+      </div>
+      <div class="stat-card">
+        <div class="value">{{ brands_detected }}</div>
+        <div class="label">Brands Tracked</div>
+      </div>
+      <div class="stat-card">
+        <div class="value">{{ channels_detected }}</div>
+        <div class="label">Retail Channels</div>
+      </div>
+      <div class="stat-card">
+        <div class="value">{{ intent_signals }}</div>
+        <div class="label">Intent Signals</div>
+      </div>
+      <div class="stat-card">
+        <div class="value">{{ avg_sentiment | round(3) }}</div>
+        <div class="label">Overall Sentiment</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Brand Comparison Table -->
+  <section>
+    <h2>Brand Sentiment Rankings</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Brand</th>
+          <th>Mentions</th>
+          <th>Avg. Score</th>
+          <th>Sentiment</th>
+          <th>Positive %</th>
+          <th>Negative %</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in brand_table %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><strong>{{ row.brand }}</strong></td>
+          <td>{{ row.mentions }}</td>
+          <td>{{ row.avg_sentiment | round(4) }}</td>
+          <td class="{{ row.sentiment.lower() }}">{{ row.sentiment }}</td>
+          <td>{{ row["positive_%"] | round(1) }}%</td>
+          <td>{{ row["negative_%"] | round(1) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Charts Row 1 -->
+  <section>
+    <h2>Sentiment Charts</h2>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div id="chart-bar"></div>
+      </div>
+      <div class="chart-card">
+        <div id="chart-pie-sentiment"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Charts Row 2 -->
+  <section>
+    <h2>Channel & Purchase Intent</h2>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div id="chart-channel-pie"></div>
+      </div>
+      <div class="chart-card">
+        <div id="chart-funnel"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trend -->
+  <section>
+    <h2>Sentiment Trend (Weekly)</h2>
+    <div class="chart-card">
+      <div id="chart-trend"></div>
+    </div>
+  </section>
+
+  <!-- Narrative Themes -->
+  <section>
+    <h2>Narrative Themes</h2>
+    <table>
+      <thead>
+        <tr><th>Theme</th><th>Mentions</th><th>% of Corpus</th></tr>
+      </thead>
+      <tbody>
+        {% for theme, count in theme_counts.items() %}
+        <tr>
+          <td>{{ theme }}</td>
+          <td>{{ count }}</td>
+          <td>{{ theme_pct.get(theme, 0) | round(1) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if top_tfidf %}
+    <p style="margin-top:1rem; color:#64748b; font-size:0.85rem;">
+      <strong>Top TF-IDF terms:</strong> {{ top_tfidf[:20] | join(", ") }}
+    </p>
+    {% endif %}
+  </section>
+
+  <!-- Top Channels -->
+  <section>
+    <h2>Top Retail Channels</h2>
+    <table>
+      <thead>
+        <tr><th>Channel</th><th>Mentions</th><th>Share</th></tr>
+      </thead>
+      <tbody>
+        {% for channel in top_channels %}
+        <tr>
+          <td>{{ channel }}</td>
+          <td>{{ channel_counts.get(channel, 0) }}</td>
+          <td>{{ channel_share.get(channel, 0) | round(1) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<footer>
+  Reddit Sneaker Sentiment &bull; Generated {{ report_date }} &bull;
+  <a href="https://github.com" style="color:#64748b">Portfolio Project</a>
+</footer>
+
+<script>
+  function renderChart(id, jsonStr) {
+    if (!jsonStr || jsonStr === "{}") return;
+    try {
+      const spec = JSON.parse(jsonStr);
+      Plotly.newPlot(id, spec.data, spec.layout, {responsive: true, displayModeBar: false});
+    } catch(e) { console.warn("Chart error:", id, e); }
+  }
+  renderChart("chart-bar",           {{ chart_bar | safe }});
+  renderChart("chart-pie-sentiment", {{ chart_pie_sentiment | safe }});
+  renderChart("chart-channel-pie",   {{ chart_channel_pie | safe }});
+  renderChart("chart-funnel",        {{ chart_funnel | safe }});
+  renderChart("chart-trend",         {{ chart_trend | safe }});
+</script>
+</body>
+</html>
