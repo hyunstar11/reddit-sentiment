@@ -64,6 +64,8 @@ DOMAIN_TO_CHANNEL: dict[str, str] = {
 }
 
 # Keyword → channel (for mentions without a URL)
+# Note: "rei" intentionally omitted — too short, matches inside other words.
+# REI.com is still detected via URL domain mapping above.
 _KEYWORD_TO_CHANNEL: dict[str, str] = {
     "stockx": "StockX",
     "goat": "GOAT",
@@ -88,13 +90,13 @@ _KEYWORD_TO_CHANNEL: dict[str, str] = {
     "concepts": "Concepts",
     "bodega": "Bodega",
     "ebay": "eBay",
-    "rei": "REI",
 }
 
-# Pre-compiled keyword pattern (longest first to avoid partial matches)
+# Pre-compiled keyword pattern — longest first, word boundaries to prevent
+# partial matches (e.g. "rei" inside "received", "kith" inside "skither")
 _sorted_keywords = sorted(_KEYWORD_TO_CHANNEL, key=len, reverse=True)
 _KEYWORD_PATTERN = re.compile(
-    "|".join(re.escape(k) for k in _sorted_keywords),
+    "|".join(r"\b" + re.escape(k) + r"\b" for k in _sorted_keywords),
     re.IGNORECASE,
 )
 

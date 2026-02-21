@@ -88,7 +88,23 @@ class SentimentConfig(BaseSettings):
     negative_threshold: float = -0.05
 
 
+class EbayConfig(BaseSettings):
+    """eBay Finding API credentials."""
+
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
+        env_file=_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    app_id: str = Field(default="", alias="EBAY_APP_ID")
+    # eBay sneakers category ID
+    category_id: str = Field(default="15709", alias="EBAY_CATEGORY_ID")
+    max_results_per_model: int = Field(default=100, alias="EBAY_MAX_RESULTS")
+
+
 # Singleton instances (import these in application code)
 reddit_config = RedditConfig()
 collection_config = CollectionConfig()
 sentiment_config = SentimentConfig()
+ebay_config = EbayConfig()

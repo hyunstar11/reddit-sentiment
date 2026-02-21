@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 
 from reddit_sentiment.analysis.brand_comparison import BrandMetrics
 from reddit_sentiment.analysis.channel_attribution import ChannelAttribution
+from reddit_sentiment.analysis.price_correlation import ModelSignal
 
 
 def brand_sentiment_bar(metrics: dict[str, BrandMetrics]) -> str:
@@ -111,22 +112,35 @@ def sentiment_trend_line(weekly_df: pd.DataFrame) -> str:
     if weekly_df.empty:
         return "{}"
 
+    fig = go.Figure()
+
     if "brands" in weekly_df.columns:
-        fig = px.line(
-            weekly_df,
-            x="period",
-            y="avg_sentiment",
-            color="brands",
-            title="Weekly Sentiment Trend by Brand",
-        )
+        for brand, grp in weekly_df.groupby("brands"):
+            grp = grp.sort_values("period")
+            fig.add_trace(go.Scatter(
+                x=grp["period"].tolist(),
+                y=grp["avg_sentiment"].tolist(),
+                mode="lines+markers",
+                name=str(brand),
+            ))
+        title = "Weekly Sentiment Trend by Brand"
     else:
-        fig = px.line(weekly_df, x="period", y="avg_sentiment", title="Weekly Sentiment Trend")
+        df_sorted = weekly_df.sort_values("period")
+        fig.add_trace(go.Scatter(
+            x=df_sorted["period"].tolist(),
+            y=df_sorted["avg_sentiment"].tolist(),
+            mode="lines+markers",
+            line=dict(color="#6366f1", width=2),
+            marker=dict(size=6),
+            name="Avg. Sentiment",
+        ))
+        title = "Weekly Sentiment Trend"
 
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     fig.update_layout(
+        title=title,
         xaxis_title="Week",
         yaxis_title="Avg. Sentiment",
-        yaxis=dict(range=[-1, 1]),
         height=380,
         plot_bgcolor="white",
         paper_bgcolor="white",
@@ -166,5 +180,73 @@ def intent_funnel(attribution: ChannelAttribution) -> str:
         title="Purchase Intent Funnel",
         height=400,
         margin=dict(l=150, r=60, t=60, b=40),
+    )
+    return fig.to_json()
+
+
+def model_mentions_bar(signals: list[ModelSignal]) -> str:
+    """Horizontal bar: Reddit mention count per shoe model, coloured by sentiment."""
+    filtered = [s for s in signals if s.mention_count >= 3]
+    if not filtered:
+        return "{}"
+
+    filtered.sort(key=lambda s: s.mention_count)
+    names = [s.model for s in filtered]
+    counts = [s.mention_count for s in filtered]
+    colours = [
+        "#22c55e" if s.avg_sentiment > 0.05 else "#ef4444" if s.avg_sentiment < -0.05 else "#94a3b8"
+        for s in filtered
+    ]
+
+    fig = go.Figure(go.Bar(
+        x=counts,
+        y=names,
+        orientation="h",
+        marker_color=colours,
+        text=[f"{s.avg_sentiment:+.2f}" for s in filtered],
+        textposition="outside",
+    ))
+    fig.update_layout(
+        title="Shoe Model Mentions (colour = sentiment)",
+        xaxis_title="Reddit Mentions",
+        height=max(350, len(filtered) * 28),
+        margin=dict(l=160, r=80, t=60, b=40),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
+    return fig.to_json()
+
+
+def sentiment_price_scatter(signals: list[ModelSignal]) -> str:
+    """Scatter: avg_sentiment (x) vs price_premium (y), bubble size = mentions."""
+    paired = [s for s in signals if s.num_sales > 0 and s.retail_price > 0]
+    if len(paired) < 3:
+        return "{}"
+
+    fig = go.Figure(go.Scatter(
+        x=[s.avg_sentiment for s in paired],
+        y=[s.price_premium * 100 for s in paired],
+        mode="markers+text",
+        text=[s.model for s in paired],
+        textposition="top center",
+        marker=dict(
+            size=[max(8, min(s.mention_count * 1.5, 40)) for s in paired],
+            color=[s.avg_sentiment for s in paired],
+            colorscale="RdYlGn",
+            cmin=-0.5,
+            cmax=0.5,
+            showscale=True,
+            colorbar=dict(title="Sentiment"),
+        ),
+    ))
+    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    fig.add_vline(x=0, line_dash="dash", line_color="gray")
+    fig.update_layout(
+        title="Reddit Sentiment vs. eBay Resale Premium",
+        xaxis_title="Avg. Sentiment Score (Reddit)",
+        yaxis_title="Price Premium over Retail (%)",
+        height=480,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
     )
     return fig.to_json()

@@ -10,6 +10,7 @@ from reddit_sentiment.config import SentimentConfig
 from reddit_sentiment.detection.brands import BrandDetector, BrandMention
 from reddit_sentiment.detection.channels import ChannelDetector
 from reddit_sentiment.detection.intent import IntentResult, PurchaseIntentClassifier
+from reddit_sentiment.detection.models import ModelDetector
 from reddit_sentiment.sentiment.vader import VaderAnalyzer
 
 
@@ -39,6 +40,7 @@ class SentimentPipeline:
 
         self._vader = VaderAnalyzer()
         self._brand_detector = BrandDetector()
+        self._model_detector = ModelDetector()
         self._channel_detector = ChannelDetector()
         self._intent_clf = PurchaseIntentClassifier()
 
@@ -103,6 +105,7 @@ class SentimentPipeline:
         transformer_scores: list[float | None] = []
         hybrid_scores: list[float] = []
         brand_lists: list[list[str]] = []
+        model_lists: list[list[str]] = []
         channel_lists: list[list[str]] = []
         intent_primaries: list[str | None] = []
         all_intents_col: list[list[str]] = []
@@ -130,6 +133,9 @@ class SentimentPipeline:
             # Brand names
             brands = list({m.brand for m in all_mentions[i]})
 
+            # Shoe models
+            models = self._model_detector.detect_models(text)
+
             # Channels
             channels = self._channel_detector.detect(text, urls if isinstance(urls, list) else [])
 
@@ -139,6 +145,7 @@ class SentimentPipeline:
             transformer_scores.append(t_score)
             hybrid_scores.append(hybrid)
             brand_lists.append(brands)
+            model_lists.append(models)
             channel_lists.append(channels)
             intent_primaries.append(intent_result.primary_intent)
             all_intents_col.append(intent_result.all_intents)
@@ -147,6 +154,7 @@ class SentimentPipeline:
         df["transformer_score"] = transformer_scores
         df["hybrid_score"] = hybrid_scores
         df["brands"] = brand_lists
+        df["models"] = model_lists
         df["channels"] = channel_lists
         df["primary_intent"] = intent_primaries
         df["all_intents"] = all_intents_col

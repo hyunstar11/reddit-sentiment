@@ -226,6 +226,70 @@
     {% endif %}
   </section>
 
+  <!-- Shoe Model Intelligence -->
+  <section>
+    <h2>Shoe Model Signals</h2>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div id="chart-model-bar"></div>
+      </div>
+      {% if has_ebay_data %}
+      <div class="chart-card">
+        <div id="chart-scatter"></div>
+      </div>
+      {% else %}
+      <div class="chart-card" style="display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.9rem;padding:2rem;">
+        <div style="text-align:center;">
+          <div style="font-size:2rem;margin-bottom:0.5rem;">📊</div>
+          <strong>Sentiment vs. Price Premium</strong><br>
+          Run <code>reddit-sentiment ebay-collect</code> after adding<br>
+          <code>EBAY_APP_ID</code> to .env to unlock this chart.
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% if corr_table %}
+    <table style="margin-top:1.5rem;">
+      <thead>
+        <tr>
+          <th>Model</th><th>Brand</th><th>Mentions</th>
+          <th>Avg Sentiment</th><th>Positive%</th>
+          {% if has_ebay_data %}<th>Retail</th><th>Avg Sold</th><th>Premium%</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in corr_table %}
+        <tr>
+          <td><strong>{{ row.model }}</strong></td>
+          <td>{{ row.brand }}</td>
+          <td>{{ row.mentions }}</td>
+          <td class="{{ 'positive' if row.avg_sentiment > 0.05 else 'negative' if row.avg_sentiment < -0.05 else 'neutral' }}">
+            {{ '%+.3f' | format(row.avg_sentiment) }}
+          </td>
+          <td>{{ row['positive_%'] }}%</td>
+          {% if has_ebay_data %}
+          <td>${{ row.retail_price | int }}</td>
+          <td>${{ row.avg_sold_price | round(0) | int }}</td>
+          <td class="{{ 'positive' if row['price_premium_%'] > 0 else 'negative' }}">
+            {{ '%+.1f' | format(row['price_premium_%']) }}%
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if has_ebay_data and corr_coefficient is not none %}
+    <p style="margin-top:1rem;color:#64748b;font-size:0.85rem;">
+      <strong>Sentiment ↔ Price Premium correlation (Pearson r):</strong> {{ corr_coefficient }}
+      {% if corr_coefficient > 0.4 %} — <span style="color:#16a34a;">strong positive</span>
+      {% elif corr_coefficient > 0.2 %} — <span style="color:#ca8a04;">moderate positive</span>
+      {% elif corr_coefficient < -0.2 %} — <span style="color:#dc2626;">negative</span>
+      {% else %} — weak / no linear relationship{% endif %}
+    </p>
+    {% endif %}
+    {% endif %}
+  </section>
+
   <!-- Top Channels -->
   <section>
     <h2>Top Retail Channels</h2>
@@ -253,10 +317,10 @@
 </footer>
 
 <script>
-  function renderChart(id, jsonStr) {
-    if (!jsonStr || jsonStr === "{}") return;
+  function renderChart(id, spec) {
+    if (!spec || Object.keys(spec).length === 0) return;
     try {
-      const spec = JSON.parse(jsonStr);
+      if (typeof spec === "string") spec = JSON.parse(spec);
       Plotly.newPlot(id, spec.data, spec.layout, {responsive: true, displayModeBar: false});
     } catch(e) { console.warn("Chart error:", id, e); }
   }
@@ -265,6 +329,10 @@
   renderChart("chart-channel-pie",   {{ chart_channel_pie | safe }});
   renderChart("chart-funnel",        {{ chart_funnel | safe }});
   renderChart("chart-trend",         {{ chart_trend | safe }});
+  renderChart("chart-model-bar",     {{ chart_model_bar | safe }});
+  {% if has_ebay_data %}
+  renderChart("chart-scatter",       {{ chart_scatter | safe }});
+  {% endif %}
 </script>
 </body>
 </html>

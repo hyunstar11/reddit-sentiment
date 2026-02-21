@@ -23,16 +23,30 @@ def cli() -> None:
     multiple=True,
     help="Subreddits to collect (repeatable; defaults to config list)",
 )
-def collect(output: str | None, subreddits: tuple[str, ...]) -> None:
-    """Fetch posts and comments from Reddit → data/raw/*.parquet"""
-    from reddit_sentiment.collection.collector import SubredditCollector
+@click.option(
+    "--public",
+    is_flag=True,
+    default=False,
+    help="Use public JSON API (no credentials required)",
+)
+def collect(output: str | None, subreddits: tuple[str, ...], public: bool) -> None:
+    """Fetch posts from Reddit → data/raw/*.parquet
 
+    Use --public to collect without API credentials (uses Reddit's public JSON API).
+    """
     cfg = CollectionConfig()
     if subreddits:
         cfg = CollectionConfig(subreddits=list(subreddits))
 
-    collector = SubredditCollector(config=cfg)
     out_path = Path(output) if output else None
+
+    if public:
+        from reddit_sentiment.collection.public_collector import PublicSubredditCollector
+        collector = PublicSubredditCollector(config=cfg)
+    else:
+        from reddit_sentiment.collection.collector import SubredditCollector
+        collector = SubredditCollector(config=cfg)  # type: ignore[assignment]
+
     try:
         result = collector.collect(output_path=out_path)
         click.echo(f"Saved: {result}")
@@ -119,18 +133,83 @@ def report(input_path: str | None) -> None:
     click.echo(f"Markdown:    {md_path}")
 
 
+@cli.command("ebay-collect")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output Parquet path")
+@click.option(
+    "--models",
+    "-m",
+    multiple=True,
+    help="Specific model names to collect (default: all detected models from latest annotated data)",
+)
+def ebay_collect(output: str | None, models: tuple[str, ...]) -> None:
+    """Fetch eBay sold listings for shoe models → data/raw/ebay_*.parquet
+
+    Requires EBAY_APP_ID in .env. Register free at developer.ebay.com.
+    """
+    import pandas as pd
+
+    from reddit_sentiment.collection.ebay_collector import EbayCollector
+    from reddit_sentiment.config import ebay_config
+    from reddit_sentiment.detection.models import MODEL_CATALOG
+
+    cfg = collection_config
+
+    # Determine models to collect
+    if models:
+        model_list = list(models)
+    else:
+        # Auto-detect: use models found in the latest annotated data
+        annotated_path = cfg.processed_data_dir / "annotated.parquet"
+        if annotated_path.exists():
+            df = pd.read_parquet(annotated_path)
+            if "models" in df.columns:
+                found = set()
+                for row in df["models"].dropna():
+                    if hasattr(row, "__iter__") and not isinstance(row, str):
+                        found.update(row)
+                model_list = sorted(
+                    {str(m) for m in found if m and str(m) != "nan"}
+                    & set(MODEL_CATALOG.keys())
+                )
+                click.echo(f"Auto-detected {len(model_list)} models from annotated data")
+            else:
+                model_list = list(MODEL_CATALOG.keys())
+        else:
+            model_list = list(MODEL_CATALOG.keys())
+
+    if not model_list:
+        click.echo("No models to collect.", err=True)
+        sys.exit(1)
+
+    click.echo(f"Collecting eBay sold listings for {len(model_list)} models…")
+    collector = EbayCollector(config=ebay_config)
+
+    try:
+        out_path = Path(output) if output else None
+        result = collector.collect(models=model_list, output_path=out_path)
+        click.echo(f"Saved: {result}")
+    except RuntimeError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
 @cli.command()
 @click.option("--no-transformer", is_flag=True, default=False)
-def pipeline(no_transformer: bool) -> None:
+@click.option("--public", is_flag=True, default=False, help="Use public JSON API (no credentials)")
+def pipeline(no_transformer: bool, public: bool) -> None:
     """Run collect → analyze → report in sequence."""
-    from reddit_sentiment.collection.collector import SubredditCollector
     from reddit_sentiment.reporting.generator import ReportGenerator
     from reddit_sentiment.sentiment.pipeline import SentimentPipeline
 
     cfg = collection_config
 
     click.echo("=== Step 1/3: Collect ===")
-    collector = SubredditCollector()
+    if public:
+        from reddit_sentiment.collection.public_collector import PublicSubredditCollector
+        collector = PublicSubredditCollector()
+    else:
+        from reddit_sentiment.collection.collector import SubredditCollector
+        collector = SubredditCollector()
     raw_path = collector.collect()
 
     click.echo("=== Step 2/3: Analyze ===")

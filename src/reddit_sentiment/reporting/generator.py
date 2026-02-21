@@ -12,11 +12,14 @@ from reddit_sentiment.analysis.brand_comparison import BrandComparisonAnalyzer
 from reddit_sentiment.analysis.channel_attribution import ChannelAttributionAnalyzer
 from reddit_sentiment.analysis.narrative import NarrativeThemeExtractor
 from reddit_sentiment.analysis.trends import SentimentTrendAnalyzer
+from reddit_sentiment.analysis.price_correlation import PriceCorrelationAnalyzer
 from reddit_sentiment.reporting.charts import (
     brand_sentiment_bar,
     channel_share_pie,
     intent_funnel,
+    model_mentions_bar,
     sentiment_distribution_pie,
+    sentiment_price_scatter,
     sentiment_trend_line,
 )
 
@@ -33,6 +36,15 @@ class ReportGenerator:
             loader=FileSystemLoader(str(_TEMPLATES_DIR)),
             autoescape=False,
         )
+
+    def _load_ebay_data(self) -> pd.DataFrame:
+        """Load latest eBay parquet if available, else return empty DataFrame."""
+        from reddit_sentiment.config import collection_config
+        data_dir = collection_config.raw_data_dir
+        files = sorted(data_dir.glob("ebay_*.parquet"), reverse=True)
+        if files:
+            return pd.read_parquet(files[0])
+        return pd.DataFrame()
 
     def generate(self, df: pd.DataFrame, timestamp: str | None = None) -> tuple[Path, Path]:
         """Run analyses and write HTML + Markdown reports.
@@ -79,6 +91,14 @@ class ReportGenerator:
         subreddits = df["subreddit"].unique().tolist() if "subreddit" in df.columns else []
 
         # ------------------------------------------------------------------
+        # Price correlation (uses eBay data if available)
+        # ------------------------------------------------------------------
+        corr_analyzer = PriceCorrelationAnalyzer()
+        ebay_df = self._load_ebay_data()
+        corr_result = corr_analyzer.analyze(df, ebay_df)
+        corr_table = corr_result.summary_df.to_dict("records") if not corr_result.summary_df.empty else []
+
+        # ------------------------------------------------------------------
         # Render charts
         # ------------------------------------------------------------------
         chart_bar = brand_sentiment_bar(brand_metrics)
@@ -86,6 +106,8 @@ class ReportGenerator:
         chart_channel_pie = channel_share_pie(attribution)
         chart_funnel = intent_funnel(attribution)
         chart_trend = sentiment_trend_line(trends.weekly)
+        chart_model_bar = model_mentions_bar(corr_result.signals)
+        chart_scatter = sentiment_price_scatter(corr_result.signals)
 
         # ------------------------------------------------------------------
         # HTML report
@@ -113,6 +135,11 @@ class ReportGenerator:
             chart_channel_pie=chart_channel_pie,
             chart_funnel=chart_funnel,
             chart_trend=chart_trend,
+            chart_model_bar=chart_model_bar,
+            chart_scatter=chart_scatter,
+            corr_table=corr_table,
+            corr_coefficient=corr_result.correlation_sentiment_premium,
+            has_ebay_data=not ebay_df.empty,
         )
         html_path = self._reports_dir / f"report_{timestamp}.html"
         html_path.write_text(html_content, encoding="utf-8")

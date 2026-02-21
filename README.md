@@ -1,10 +1,74 @@
 # Reddit Sneaker Sentiment Analysis
 
-A standalone NLP pipeline that extracts consumer narrative signals from Reddit — brand sentiment, narrative themes, and retail channel attribution across 10 major sneaker brands.
+A standalone NLP pipeline that collects public Reddit discussions from sneaker communities and extracts **brand sentiment**, **retail channel attribution**, and **purchase intent signals** across major footwear brands.
+
+Part of a two-project portfolio system — see [Integration with sneaker-intel](#integration-with-sneaker-intel).
 
 ```
 reddit-sentiment collect → analyze → report
 ```
+
+---
+
+## What This Project Does
+
+Sneaker brands like Nike and Adidas spend heavily on product launches, but consumer reaction is largely measured after the fact through sales data. This project extracts **pre- and post-launch consumer signals** from Reddit — where real buyers discuss what they want, what they bought, and where they bought it.
+
+Three core questions it answers:
+
+1. **Which brands have positive vs. negative narrative momentum?**
+   VADER + Twitter-RoBERTa sentiment scoring on brand-mention context windows, aggregated into weekly trends.
+
+2. **Where are consumers being directed to buy?**
+   URL domain extraction and keyword matching identify 40+ retail channels (Nike Direct, StockX, GOAT, Foot Locker, etc.) and map how purchase intent flows across them.
+
+3. **What are consumers actually talking about?**
+   TF-IDF and keyword theme extraction surface dominant narratives: hype, quality, value, authenticity, performance.
+
+**Data source:** 9 subreddits — `r/Sneakers`, `r/Nike`, `r/Adidas`, `r/SneakerMarket`, `r/Yeezy`, `r/FashionReps`, `r/malefashionadvice`, `r/Running`, `r/Basketball`
+
+---
+
+## Integration with sneaker-intel
+
+This project is one half of a two-part portfolio platform. Together they form an end-to-end **demand signal system**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Sneaker Demand Intelligence Platform               │
+├────────────────────────────┬────────────────────────────────────┤
+│       sneaker-intel        │       reddit-sentiment             │
+├────────────────────────────┼────────────────────────────────────┤
+│ StockX historical data     │ Reddit live discussions            │
+│ (99K+ transactions)        │ (2,400+ posts, 9 subreddits)       │
+│                            │                                    │
+│ Tabular ML pipeline        │ NLP sentiment pipeline             │
+│ XGBoost / LightGBM / RF    │ VADER + Twitter-RoBERTa            │
+│                            │                                    │
+│ Output: demand tiers,      │ Output: brand narratives,          │
+│ price signals, sell-       │ channel attribution,               │
+│ through risk               │ purchase intent funnel             │
+└────────────────────────────┴────────────────────────────────────┘
+                         │
+                         ▼
+          Combined signal: "Product X has high aftermarket
+          demand (sneaker-intel) AND strong positive Reddit
+          narrative with 188 active seekers (reddit-sentiment)
+          → recommend: increase production allocation,
+            prioritize Nike Direct channel"
+```
+
+**Why two projects instead of one?**
+
+- `sneaker-intel` answers: *"How strong was demand historically?"* — backward-looking, quantitative
+- `reddit-sentiment` answers: *"What is the current consumer narrative?"* — forward-looking, qualitative
+
+The combination mirrors how footwear demand planners actually work: historical sell-through data calibrates production models, while social listening captures real-time intent shifts before they show up in sales figures.
+
+**Example combined insight from this run:**
+- `sneaker-intel`: Nike products cluster in the High demand tier, trading at 1.3–1.8× retail
+- `reddit-sentiment`: Nike has 456 mentions, +0.245 avg sentiment, 188 active purchase-seekers, with eBay and GOAT as the dominant secondary market channels
+- **Planning implication**: Strong aftermarket signal + active secondary market activity → demand exceeds supply; increase production or tighten channel allocation to Nike Direct
 
 ---
 
@@ -15,7 +79,8 @@ reddit-sentiment/
 ├── src/reddit_sentiment/
 │   ├── config.py                   # pydantic-settings: API keys + thresholds
 │   ├── collection/
-│   │   ├── client.py               # PRAW read-only wrapper
+│   │   ├── client.py               # PRAW read-only wrapper (requires API credentials)
+│   │   ├── public_collector.py     # Requests-based collector (no credentials needed)
 │   │   ├── collector.py            # SubredditCollector (checkpoint + Parquet)
 │   │   └── schemas.py              # RedditPost / RedditComment dataclasses
 │   ├── detection/
@@ -53,45 +118,73 @@ The transformer runs only on short brand-context snippets (not full posts), keep
 
 ## Quick Start
 
-### 1. Prerequisites
+### Option A — No credentials (public JSON API)
 
-Create a Reddit "script" app at <https://www.reddit.com/prefs/apps> and copy credentials:
+```bash
+make install
+reddit-sentiment collect --public   # pulls real Reddit data, no API key needed
+reddit-sentiment analyze --no-transformer
+reddit-sentiment report
+```
+
+### Option B — With Reddit API credentials (full pipeline)
 
 ```bash
 cp .env.example .env
 # Edit .env: add REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET
+make install
+make pipeline
 ```
 
-### 2. Install
+### Install
 
 ```bash
 # Core + dev dependencies (no GPU needed)
 make install
 
-# With transformer model (requires ~2 GB free disk + GPU optional)
+# With transformer model (requires ~2 GB free disk, GPU optional)
 make install-ml
 ```
 
-### 3. Run Pipeline
+### CLI Reference
 
 ```bash
-# All-in-one
-make pipeline
-
-# Or step by step:
-make collect   # → data/raw/posts_YYYYMMDD_HHMMSS.parquet
-make analyze   # → data/processed/annotated.parquet
-make report    # → data/reports/report_YYYYMMDD.html
-```
-
-### 4. CLI Reference
-
-```bash
-reddit-sentiment collect   [--output PATH] [--subreddits r1 r2 ...]
+reddit-sentiment collect   [--output PATH] [--subreddits r1 r2 ...] [--public]
 reddit-sentiment analyze   [--input PATH] [--output PATH] [--no-transformer]
 reddit-sentiment report    [--input PATH]
-reddit-sentiment pipeline  [--no-transformer]
+reddit-sentiment pipeline  [--no-transformer] [--public]
 ```
+
+---
+
+## Sample Findings (Feb 2026, 2,452 posts)
+
+### Brand Sentiment Rankings
+
+| Brand | Mentions | Avg Sentiment | Positive% | Negative% |
+|-------|----------|--------------|-----------|-----------|
+| Nike | 456 | +0.245 | 52.4% | 22.4% |
+| Adidas | 260 | +0.293 | 54.6% | 19.6% |
+| New Balance | 42 | +0.168 | 47.6% | 23.8% |
+| Hoka | 9 | +0.319 | 55.6% | 22.2% |
+
+### Top Retail Channels
+
+eBay · Kith · Undefeated · GOAT · Amazon · Foot Locker · StockX · Nike Direct
+
+### Purchase Intent Funnel
+
+| Stage | Count |
+|-------|-------|
+| Marketplace activity (WTS/WTB) | 278 |
+| Actively seeking purchase | 188 |
+| Completed purchase | 91 |
+| Considering purchase | 30 |
+| Availability / drop info | 16 |
+
+### Dominant Narrative Themes
+
+Aesthetics & Design (27.9%) · Authenticity & Fakes (20.7%) · Quality & Comfort (19.5%) · Brand Loyalty (19.2%) · Value & Pricing (14.6%)
 
 ---
 
@@ -100,23 +193,14 @@ reddit-sentiment pipeline  [--no-transformer]
 | Brand | Key Aliases |
 |-------|-------------|
 | Nike | Swoosh, Air Max, Air Jordan, Dunk, Jordan |
-| Adidas | Three Stripes, Yeezy, Ultraboost, NMD |
-| Li-Ning | Way of Wade, WoW, LN |
-| Anta | KT, Klay Thompson |
-| 361 Degrees | 361° |
-| Under Armour | UA, Curry Brand, Curry N |
+| Adidas | Three Stripes, Yeezy, Ultraboost, NMD, Samba |
 | New Balance | NB, 990, 993, 1906 |
+| Hoka | Hoka One One, Clifton, Bondi |
+| Under Armour | UA, Curry Brand |
 | Puma | PUMA |
 | Asics | ASICS, Gel-Kayano |
-| Hoka | Hoka One One, Clifton, Bondi |
-
-## Subreddits
-
-`r/Sneakers` · `r/SneakerMarket` · `r/Nike` · `r/Adidas` · `r/Yeezy` · `r/FashionReps` · `r/malefashionadvice` · `r/Running` · `r/Basketball`
-
-## Retail Channels
-
-40+ domains mapped including Nike Direct, StockX, GOAT, Foot Locker, Adidas Direct, Farfetch, SSENSE, JD Sports, Kith, Flight Club, Grailed, and more.
+| Li-Ning | Way of Wade, LN |
+| Anta | KT, Klay Thompson |
 
 ## Purchase Intent Types
 
@@ -134,17 +218,17 @@ reddit-sentiment pipeline  [--no-transformer]
 
 ## Report Output
 
-The HTML report is fully self-contained (embedded Plotly CDN) and includes:
+The HTML report is fully self-contained (Plotly CDN) and includes:
 
-- **Brand Sentiment Rankings** table with avg score, sentiment label, positive/negative %
-- **Sentiment Bar Chart** — horizontal bar coloured green/red/grey by label
-- **Sentiment Distribution Pie** — overall corpus positive/neutral/negative split
+- **Brand Sentiment Rankings** table — avg score, sentiment label, positive/negative %
+- **Sentiment Bar Chart** — horizontal bar coloured by sentiment label
+- **Sentiment Distribution Pie** — corpus-wide positive/neutral/negative split
 - **Channel Share Pie** — top retail channel breakdown
 - **Purchase Intent Funnel** — staged buyer journey signals
-- **Sentiment Trend Line** — weekly average over collection period
+- **Weekly Sentiment Trend** — avg sentiment over collection window
 - **Narrative Themes** table with TF-IDF top terms
 
-A companion Markdown summary is also generated for quick reading.
+A companion Markdown summary is also generated.
 
 ---
 
@@ -156,27 +240,6 @@ make lint        # ruff check + format check
 make lint-fix    # auto-fix lint issues
 make clean       # remove caches and build artifacts
 ```
-
-### Project Relation to sneaker-intel
-
-This is a sibling package to the [Sneaker Demand Intelligence Platform](../README.md):
-
-| | sneaker-intel | reddit-sentiment |
-|---|---|---|
-| Data source | StockX historical CSVs (static) | Reddit live API |
-| Domain | Tabular price prediction (ML) | NLP sentiment pipeline |
-| Output | Aftermarket price forecasts | Brand narrative reports |
-| Models | XGBoost / Ridge regression | VADER + Twitter-RoBERTa |
-
----
-
-## Notebooks
-
-| Notebook | Content |
-|----------|---------|
-| `01_data_collection_eda.ipynb` | Collection architecture, EDA, URL analysis |
-| `02_sentiment_analysis.ipynb` | Pipeline walkthrough, brand detection, intent signals |
-| `03_brand_insights.ipynb` | Brand comparison, themes, channel attribution, report generation |
 
 ---
 

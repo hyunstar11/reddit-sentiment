@@ -38,8 +38,10 @@ class SentimentTrendAnalyzer:
 
         # Drop tz info before to_period to avoid pandas UserWarning
         utc_naive = df["created_utc"].dt.tz_convert("UTC").dt.tz_localize(None)
-        df["week"] = utc_naive.dt.to_period("W").astype(str)
-        df["month"] = utc_naive.dt.to_period("M").astype(str)
+        # Use period start date as string (avoids "YYYY-MM-DD/YYYY-MM-DD" interval format
+        # that confuses Plotly's date parser)
+        df["week"] = utc_naive.dt.to_period("W").dt.start_time.dt.strftime("%Y-%m-%d")
+        df["month"] = utc_naive.dt.to_period("M").dt.start_time.dt.strftime("%Y-%m")
 
         if by_brand and "brands" in df.columns:
             base = df.explode("brands")

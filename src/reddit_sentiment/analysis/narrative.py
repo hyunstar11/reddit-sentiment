@@ -2,11 +2,27 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+_URL_RE = re.compile(r"https?://\S+|www\.\S+")
+
+# Additional stop words for Reddit/sneaker corpus noise
+_EXTRA_STOP_WORDS = {
+    "just", "like", "know", "think", "want", "got", "get", "good", "great",
+    "really", "going", "don", "didn", "doesn", "isn", "wasn", "ve", "ll",
+    "re", "im", "ive", "id", "item", "itemid", "html", "com", "http",
+    "https", "www", "removed", "deleted", "gt", "amp",
+}
+
+
+def _clean_for_tfidf(text: str) -> str:
+    """Strip URLs and markdown artifacts before TF-IDF vectorization."""
+    return _URL_RE.sub(" ", text)
 
 # Curated theme → keyword seeds (keyword appears in text → theme is activated)
 THEME_KEYWORDS: dict[str, list[str]] = {
@@ -161,13 +177,19 @@ class NarrativeThemeExtractor:
 
         # Global TF-IDF top terms
         top_terms: list[str] = []
-        non_empty = [t for t in texts if t.strip()]
+        non_empty = [_clean_for_tfidf(t) for t in texts if t.strip()]
         if len(non_empty) >= 2:
             try:
+                stop_words = list(
+                    TfidfVectorizer(stop_words="english").get_stop_words()
+                    | _EXTRA_STOP_WORDS
+                )
                 tfidf = TfidfVectorizer(
                     max_features=self._max_features,
-                    stop_words="english",
+                    stop_words=stop_words,
                     ngram_range=(1, 2),
+                    # Only keep tokens that are purely alphabetic, 3+ chars
+                    token_pattern=r"(?u)\b[a-zA-Z]{3,}\b",
                 )
                 tfidf.fit(non_empty)
                 top_terms = list(tfidf.get_feature_names_out())
