@@ -2,7 +2,7 @@
 
 A standalone NLP pipeline that collects public Reddit discussions from sneaker communities and extracts **brand sentiment**, **retail channel attribution**, and **purchase intent signals** across major footwear brands.
 
-Part of a two-project portfolio system — see [Integration with sneaker-intel](#integration-with-sneaker-intel).
+Part of a two-project portfolio system — pairs with [sneaker-intel](https://github.com/hyunstar11/sneaker-intel), an ML demand forecasting platform. See [Integration with sneaker-intel](#integration-with-sneaker-intel).
 
 ```
 reddit-sentiment collect → analyze → report
@@ -25,7 +25,7 @@ Three core questions it answers:
 3. **What are consumers actually talking about?**
    TF-IDF and keyword theme extraction surface dominant narratives: hype, quality, value, authenticity, performance.
 
-**Data source:** 9 subreddits — `r/Sneakers`, `r/Nike`, `r/Adidas`, `r/SneakerMarket`, `r/Yeezy`, `r/FashionReps`, `r/malefashionadvice`, `r/Running`, `r/Basketball`
+**Data source:** 9 subreddits — `r/Sneakers`, `r/Nike`, `r/Adidas`, `r/SneakerMarket`, `r/Yeezy`, `r/Jordans`, `r/malefashionadvice`, `r/Running`, `r/Basketball`
 
 ---
 
@@ -86,22 +86,26 @@ reddit-sentiment/
 │   ├── detection/
 │   │   ├── brands.py               # BrandDetector (alias map + context window)
 │   │   ├── channels.py             # ChannelDetector (URL domain + keyword)
-│   │   └── intent.py               # PurchaseIntentClassifier (7 intent types)
+│   │   ├── intent.py               # PurchaseIntentClassifier (7 intent types)
+│   │   └── models.py               # ModelDetector (40+ shoe models, alias map)
 │   ├── sentiment/
 │   │   ├── vader.py                # VaderAnalyzer (fast baseline, all texts)
 │   │   ├── transformer.py          # TransformerAnalyzer (cardiffnlp, brand contexts)
 │   │   └── pipeline.py             # SentimentPipeline (hybrid 0.6t + 0.4v)
 │   ├── analysis/
-│   │   ├── brand_comparison.py     # BrandMetrics + comparison_table()
+│   │   ├── brand_comparison.py     # BrandMetrics + comparison_table(min_mentions=5)
 │   │   ├── narrative.py            # TF-IDF + keyword theme extraction
 │   │   ├── channel_attribution.py  # Channel share + intent funnel
-│   │   └── trends.py               # Weekly / monthly sentiment trends
+│   │   ├── trends.py               # Weekly / monthly sentiment trends
+│   │   └── price_correlation.py    # Reddit sentiment ↔ eBay resale premium
 │   ├── reporting/
-│   │   ├── charts.py               # 5 Plotly chart functions → JSON
+│   │   ├── charts.py               # 7 Plotly chart functions → JSON
 │   │   ├── generator.py            # ReportGenerator (HTML + Markdown)
 │   │   └── templates/report.html.j2
-│   └── cli.py                      # Click CLI: collect|analyze|report|pipeline
-└── tests/                          # 101 tests, all passing
+│   ├── dashboard/
+│   │   └── app.py                  # Streamlit dashboard (5 tabs, sidebar filters)
+│   └── cli.py                      # Click CLI: collect|analyze|report|pipeline|dashboard
+└── tests/                          # 150 tests, all passing
 ```
 
 ### Sentiment Scoring
@@ -149,42 +153,57 @@ make install-ml
 ### CLI Reference
 
 ```bash
-reddit-sentiment collect   [--output PATH] [--subreddits r1 r2 ...] [--public]
-reddit-sentiment analyze   [--input PATH] [--output PATH] [--no-transformer]
-reddit-sentiment report    [--input PATH]
-reddit-sentiment pipeline  [--no-transformer] [--public]
+reddit-sentiment collect    [--output PATH] [--subreddits r1 r2 ...] [--public]
+                            [--no-comments] [--max-comment-posts N]
+reddit-sentiment analyze    [--input PATH] [--output PATH] [--no-transformer]
+reddit-sentiment report     [--input PATH]
+reddit-sentiment pipeline   [--no-transformer] [--public]
+reddit-sentiment dashboard  [--port 8501] [--no-browser]
+reddit-sentiment ebay-collect [--models M1 M2 ...]
 ```
+
+### Interactive Dashboard
+
+```bash
+make install-dashboard   # installs streamlit
+make dashboard           # launches at http://localhost:8501
+```
+
+The dashboard provides live-filtered views of all analyses:
+- **5 tabs:** Overview · Brands · Channels · Themes · Shoe Models
+- **Sidebar filters:** subreddit multiselect, date range, record type, min-mentions slider
+- **Auto-refresh:** Streamlit reloads on file changes; re-run `collect` + `analyze` and refresh the page for updated signals
 
 ---
 
-## Sample Findings (Feb 2026, 2,452 posts)
+## Sample Findings (Feb 2026, 2,461 posts — clean data, no replica subreddits)
 
 ### Brand Sentiment Rankings
 
 | Brand | Mentions | Avg Sentiment | Positive% | Negative% |
 |-------|----------|--------------|-----------|-----------|
-| Nike | 456 | +0.245 | 52.4% | 22.4% |
-| Adidas | 260 | +0.293 | 54.6% | 19.6% |
-| New Balance | 42 | +0.168 | 47.6% | 23.8% |
-| Hoka | 9 | +0.319 | 55.6% | 22.2% |
+| Nike | 475 | +0.211 | 50.9% | 22.1% |
+| Adidas | 231 | +0.257 | 51.9% | 19.9% |
+| New Balance | 33 | +0.123 | 48.5% | 24.2% |
+| Asics | 7 | +0.443 | 71.4% | 0.0% |
 
 ### Top Retail Channels
 
-eBay · Kith · Undefeated · GOAT · Amazon · Foot Locker · StockX · Nike Direct
+eBay · Undefeated · GOAT · Kith · Amazon
 
 ### Purchase Intent Funnel
 
 | Stage | Count |
 |-------|-------|
-| Marketplace activity (WTS/WTB) | 278 |
-| Actively seeking purchase | 188 |
-| Completed purchase | 91 |
-| Considering purchase | 30 |
+| Marketplace activity (WTS/WTB) | 284 |
+| Actively seeking purchase | 110 |
+| Completed purchase | 81 |
+| Considering purchase | 25 |
 | Availability / drop info | 16 |
 
 ### Dominant Narrative Themes
 
-Aesthetics & Design (27.9%) · Authenticity & Fakes (20.7%) · Quality & Comfort (19.5%) · Brand Loyalty (19.2%) · Value & Pricing (14.6%)
+Aesthetics & Design (24.8%) · Brand Loyalty (16.8%) · Quality & Comfort (15.1%) · Authenticity & Fakes (14.6%) · Hype & Exclusivity (12.7%)
 
 ---
 
@@ -235,10 +254,11 @@ A companion Markdown summary is also generated.
 ## Development
 
 ```bash
-make test        # run 101 tests
-make lint        # ruff check + format check
-make lint-fix    # auto-fix lint issues
-make clean       # remove caches and build artifacts
+make test             # run 150 tests
+make test-cov         # with coverage report
+make lint             # ruff check + format check
+make lint-fix         # auto-fix lint issues
+make clean            # remove caches and build artifacts
 ```
 
 ---
