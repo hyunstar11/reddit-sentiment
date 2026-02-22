@@ -476,10 +476,6 @@ def _tab_models(corr_result, has_ebay: bool) -> None:
         st.divider()
         st.subheader("Positive vs. Negative breakdown (top 10 models)")
         top10 = corr_result.summary_df.nlargest(10, "mentions")
-        breakdown = pd.DataFrame([
-            {"model": r["model"], "type": "Positive", "pct": r["positive_%"]},
-            {"model": r["model"], "type": "Negative", "pct": r["negative_%"]},
-        ] for _, r in top10.iterrows()).explode("model")  # noqa: PD010
         breakdown = pd.concat([
             pd.DataFrame({"model": r["model"], "type": t, "pct": v}, index=[0])
             for _, r in top10.iterrows()

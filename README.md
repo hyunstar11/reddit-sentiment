@@ -1,6 +1,6 @@
 # Reddit Sneaker Sentiment Analysis
 
-**[Live Demo →](https://reddit-sentiment-x87v7p7tqt6fcauzah6jnd.streamlit.app)**
+**[Live Demo →](https://reddit-sneaker-sentiment.streamlit.app)** &nbsp; ![CI](https://github.com/hyunstar11/reddit-sentiment/actions/workflows/ci.yml/badge.svg)
 
 A standalone NLP pipeline that collects public Reddit discussions from sneaker communities and extracts **brand sentiment**, **retail channel attribution**, and **purchase intent signals** across major footwear brands.
 
