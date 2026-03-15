@@ -1,4 +1,8 @@
-"""Sentiment-price correlation: joins Reddit model signals with eBay sold prices."""
+"""Sentiment-price correlation: Reddit sentiment vs. resale price premium.
+
+Primary path: joins model-level Reddit signals with eBay sold prices (requires EBAY_APP_ID).
+Fallback path: brand-level correlation using StockX 2023 market data (no API needed).
+"""
 
 from __future__ import annotations
 
@@ -7,6 +11,39 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from reddit_sentiment.detection.models import MODEL_INFO
+
+# Brand-level resale premiums derived from StockX/sneakers2023 market snapshot.
+# Used as fallback when eBay data is unavailable.
+# Source: sneakers2023.csv — median pricePremium per brand (price / retail - 1).
+STOCKX_BRAND_PREMIUMS: dict[str, float] = {
+    "Adidas":      0.3070,
+    "Asics":       0.1290,
+    "New Balance": 0.2185,
+    "Nike":        0.1770,
+    "Puma":        0.4500,
+}
+
+
+@dataclass
+class BrandSignal:
+    """Combined Reddit sentiment + StockX resale premium for one brand."""
+
+    brand: str
+    avg_sentiment: float
+    mention_count: int
+    positive_pct: float
+    negative_pct: float
+    stockx_premium: float        # median price / retail - 1 from sneakers2023
+    purchase_intent_ratio: float = 0.0
+
+
+@dataclass
+class BrandCorrelationResult:
+    """Brand-level correlation output (StockX fallback)."""
+
+    signals: list[BrandSignal]
+    correlation_sentiment_premium: float | None
+    summary_df: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass
@@ -160,6 +197,80 @@ class PriceCorrelationAnalyzer:
             return None
         df = pd.DataFrame(paired, columns=["sentiment", "premium"])
         return round(float(df["sentiment"].corr(df["premium"])), 4)
+
+    def analyze_brand_level(self, reddit_df: pd.DataFrame) -> BrandCorrelationResult:
+        """Brand-level correlation using StockX premiums as the price signal.
+
+        Fallback when eBay data is unavailable. Aggregates Reddit sentiment per brand
+        and joins with StockX 2023 median resale premiums.
+        """
+        if "brands" not in reddit_df.columns or "hybrid_score" not in reddit_df.columns:
+            return BrandCorrelationResult(signals=[], correlation_sentiment_premium=None)
+
+        df = reddit_df.copy()
+        df["brands"] = df["brands"].apply(
+            lambda x: list(x) if hasattr(x, "__iter__") and not isinstance(x, str) else []
+        )
+        exploded = df.explode("brands").rename(columns={"brands": "brand"})
+        exploded = exploded[
+            exploded["brand"].notna()
+            & (exploded["brand"].astype(str).str.strip() != "")
+            & exploded["brand"].isin(STOCKX_BRAND_PREMIUMS)
+        ]
+
+        if exploded.empty:
+            return BrandCorrelationResult(signals=[], correlation_sentiment_premium=None)
+
+        signals: list[BrandSignal] = []
+        for brand, grp in exploded.groupby("brand"):
+            scores = grp["hybrid_score"].dropna()
+            if len(scores) < 3:
+                continue
+            n = len(scores)
+            pos = (scores > 0.05).sum()
+            neg = (scores < -0.05).sum()
+            completed = (grp.get("primary_intent", pd.Series()) == "completed_purchase").sum()
+            seeking = (grp.get("primary_intent", pd.Series()) == "seeking_purchase").sum()
+            intent_ratio = round(completed / (seeking + completed + 1e-9), 3)
+            signals.append(BrandSignal(
+                brand=str(brand),
+                avg_sentiment=round(float(scores.mean()), 4),
+                mention_count=n,
+                positive_pct=round(pos / n * 100, 1),
+                negative_pct=round(neg / n * 100, 1),
+                stockx_premium=STOCKX_BRAND_PREMIUMS[str(brand)],
+                purchase_intent_ratio=intent_ratio,
+            ))
+
+        signals.sort(key=lambda s: s.mention_count, reverse=True)
+
+        # Pearson r: sentiment vs StockX premium
+        corr = None
+        if len(signals) >= 3:
+            pairs = pd.DataFrame([
+                {"sentiment": s.avg_sentiment, "premium": s.stockx_premium}
+                for s in signals
+            ])
+            corr = round(float(pairs["sentiment"].corr(pairs["premium"])), 4)
+
+        summary_df = pd.DataFrame([
+            {
+                "brand": s.brand,
+                "mentions": s.mention_count,
+                "avg_sentiment": s.avg_sentiment,
+                "positive_%": s.positive_pct,
+                "negative_%": s.negative_pct,
+                "stockx_premium_%": round(s.stockx_premium * 100, 1),
+                "purchase_intent_%": round(s.purchase_intent_ratio * 100, 1),
+            }
+            for s in signals
+        ])
+
+        return BrandCorrelationResult(
+            signals=signals,
+            correlation_sentiment_premium=corr,
+            summary_df=summary_df,
+        )
 
     @staticmethod
     def _to_dataframe(signals: list[ModelSignal]) -> pd.DataFrame:

@@ -144,6 +144,13 @@ def run_model_analysis(df_json: str, ebay_json: str):
     return PriceCorrelationAnalyzer().analyze(df, ebay)
 
 
+@st.cache_data(show_spinner=False)
+def run_brand_correlation(df_json: str):
+    from reddit_sentiment.analysis.price_correlation import PriceCorrelationAnalyzer
+    df = pd.read_json(io.StringIO(df_json), orient="split")
+    return PriceCorrelationAnalyzer().analyze_brand_level(df)
+
+
 def _to_json(df: pd.DataFrame) -> str:
     """Serialize DataFrame to JSON for cache key (handles datetime columns)."""
     df = df.copy()
@@ -422,7 +429,72 @@ def _tab_themes(narrative) -> None:
             )
 
 
-def _tab_models(corr_result, has_ebay: bool) -> None:
+def _render_stockx_brand_correlation(df_json: str) -> None:
+    """Show brand-level Reddit sentiment vs. StockX resale premium as eBay fallback."""
+    import plotly.express as px
+
+    brand_corr = run_brand_correlation(df_json)
+    if not brand_corr.signals:
+        st.info("Not enough brand data to compute correlation.")
+        return
+
+    st.divider()
+    st.subheader("Sentiment vs. StockX Resale Premium — Brand Level")
+    st.caption(
+        "eBay data unavailable. Using StockX 2023 market snapshot as the resale price signal "
+        "(median price premium per brand). This mirrors the combined-signal analysis in the "
+        "companion [sneaker-intel](https://github.com/hyunstar11/sneaker-intel) project."
+    )
+
+    df = brand_corr.summary_df
+    if df.empty:
+        return
+
+    fig = px.scatter(
+        df,
+        x="avg_sentiment",
+        y="stockx_premium_%",
+        text="brand",
+        size="mentions",
+        color="avg_sentiment",
+        color_continuous_scale="RdYlGn",
+        range_color=[-0.3, 0.5],
+        labels={
+            "avg_sentiment": "Avg Reddit Sentiment",
+            "stockx_premium_%": "StockX Resale Premium (%)",
+            "mentions": "Reddit Mentions",
+        },
+        title="Reddit Sentiment vs. StockX Resale Premium by Brand",
+    )
+    fig.update_traces(textposition="top center", marker=dict(line=dict(width=1, color="white")))
+    fig.add_vline(x=0, line_dash="dash", line_color="gray", opacity=0.5)
+    fig.update_layout(
+        plot_bgcolor="white",
+        coloraxis_showscale=False,
+        height=420,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    st.plotly_chart(fig, width="stretch")
+
+    if brand_corr.correlation_sentiment_premium is not None:
+        r = brand_corr.correlation_sentiment_premium
+        interp = "positive" if r > 0.3 else "negative" if r < -0.3 else "weak"
+        st.caption(f"Pearson r = **{r:.3f}** — {interp} correlation (brand level, n={len(df)})")
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "avg_sentiment": st.column_config.NumberColumn(format="%+.4f"),
+            "stockx_premium_%": st.column_config.NumberColumn(format="%.1f%%"),
+            "positive_%": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
+            "negative_%": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
+        },
+    )
+
+
+def _tab_models(corr_result, has_ebay: bool, df_json: str = "") -> None:
     import plotly.express as px
 
     from reddit_sentiment.reporting.charts import model_mentions_bar, sentiment_price_scatter
@@ -495,7 +567,7 @@ def _tab_models(corr_result, has_ebay: bool) -> None:
 
     if has_ebay:
         st.divider()
-        st.subheader("Sentiment vs. Resale Premium")
+        st.subheader("Sentiment vs. Resale Premium (eBay)")
         _render(sentiment_price_scatter(corr_result.signals))
         if corr_result.correlation_sentiment_premium is not None:
             r = corr_result.correlation_sentiment_premium
@@ -505,10 +577,7 @@ def _tab_models(corr_result, has_ebay: bool) -> None:
                 "Reddit sentiment and eBay resale premium."
             )
     else:
-        st.info(
-            "eBay resale premiums not yet collected. "
-            "Run `reddit-sentiment ebay-collect` after setting `EBAY_APP_ID` in `.env`."
-        )
+        _render_stockx_brand_correlation(df_json)
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +648,7 @@ def main() -> None:
         _tab_themes(narrative)
 
     with tab_mo:
-        _tab_models(corr_result, has_ebay=not ebay_df.empty)
+        _tab_models(corr_result, has_ebay=not ebay_df.empty, df_json=df_json)
 
 
 if __name__ == "__main__":
