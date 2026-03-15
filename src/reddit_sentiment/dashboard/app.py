@@ -218,7 +218,7 @@ def _sidebar(df: pd.DataFrame) -> tuple[pd.DataFrame, int, bool]:
                     min_value=min_date,
                     max_value=max_date,
                 )
-                if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+                if isinstance(date_range, list | tuple) and len(date_range) == 2:
                     start, end = date_range
                     mask = (dates.dt.date >= start) & (dates.dt.date <= end)
                     filtered = filtered[mask]
@@ -488,8 +488,12 @@ def _render_stockx_brand_correlation(df_json: str) -> None:
         column_config={
             "avg_sentiment": st.column_config.NumberColumn(format="%+.4f"),
             "stockx_premium_%": st.column_config.NumberColumn(format="%.1f%%"),
-            "positive_%": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
-            "negative_%": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
+            "positive_%": st.column_config.ProgressColumn(
+                format="%.1f%%", min_value=0, max_value=100
+            ),
+            "negative_%": st.column_config.ProgressColumn(
+                format="%.1f%%", min_value=0, max_value=100
+            ),
         },
     )
 
