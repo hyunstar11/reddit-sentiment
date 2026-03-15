@@ -26,8 +26,8 @@ def cli() -> None:
 @click.option(
     "--public",
     is_flag=True,
-    default=False,
-    help="Use public JSON API (no credentials required)",
+    default=True,
+    help="Use PullPush.io (no credentials required; default)",
 )
 @click.option(
     "--no-comments",
