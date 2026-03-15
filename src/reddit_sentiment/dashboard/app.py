@@ -217,6 +217,7 @@ def _sidebar(df: pd.DataFrame) -> tuple[pd.DataFrame, int, bool]:
                     value=(min_date, max_date),
                     min_value=min_date,
                     max_value=max_date,
+                    key="date_range_filter",
                 )
                 if isinstance(date_range, list | tuple) and len(date_range) == 2:
                     start, end = date_range
