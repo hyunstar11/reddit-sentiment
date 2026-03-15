@@ -181,7 +181,6 @@ def test_collect_multi_subreddit(tmp_path):
 
 
 def test_load_latest(tmp_path):
-    collector = _make_collector(tmp_path)
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir(parents=True)
     df = pd.DataFrame({"id": ["x"], "record_type": ["post"]})
