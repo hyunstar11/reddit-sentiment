@@ -24,6 +24,12 @@ def cli() -> None:
     help="Subreddits to collect (repeatable; defaults to config list)",
 )
 @click.option(
+    "--rss",
+    is_flag=True,
+    default=False,
+    help="Use Reddit RSS feeds (no credentials; ~25 most-recent posts per subreddit)",
+)
+@click.option(
     "--public",
     is_flag=True,
     default=True,
@@ -45,15 +51,16 @@ def cli() -> None:
 def collect(
     output: str | None,
     subreddits: tuple[str, ...],
+    rss: bool,
     public: bool,
     skip_comments: bool,
     max_comment_posts: int,
 ) -> None:
-    """Fetch posts (and comments) from Reddit → data/raw/*.parquet
+    """Fetch posts from Reddit → data/raw/*.parquet
 
-    Use --public to collect without API credentials (uses Reddit's public JSON API).
-    Comments are collected by default for the top-scoring posts; use --no-comments
-    for a faster post-only run.
+    --rss        Use Reddit's public RSS feeds (no credentials; live data, ~25 posts/sub).
+    --public     Use PullPush.io archive (no credentials; larger history, ~10-month lag).
+    Default: --public.
     """
     cfg = CollectionConfig()
     if subreddits:
@@ -61,7 +68,15 @@ def collect(
 
     out_path = Path(output) if output else None
 
-    if public:
+    if rss:
+        from reddit_sentiment.collection.rss_collector import RSSSubredditCollector
+        collector = RSSSubredditCollector(config=cfg)
+        try:
+            result = collector.collect(output_path=out_path)
+        except Exception as exc:
+            click.echo(f"Collection failed: {exc}", err=True)
+            sys.exit(1)
+    elif public:
         from reddit_sentiment.collection.public_collector import PublicSubredditCollector
         collector = PublicSubredditCollector(config=cfg)
         try:

@@ -21,11 +21,39 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Collect posts via PullPush
-        run: uv run reddit-sentiment collect
+      - name: Collect posts via RSS
+        run: uv run reddit-sentiment collect --rss --output data/raw/posts_new.parquet
 
-      - name: Run sentiment analysis
-        run: uv run reddit-sentiment analyze
+      - name: Run sentiment analysis on new posts
+        run: >
+          uv run reddit-sentiment analyze
+          --input data/raw/posts_new.parquet
+          --output data/processed/annotated_new.parquet
+          --no-transformer
+
+      - name: Merge new data into annotated.parquet
+        run: |
+          uv run python - <<'EOF'
+          import pandas as pd
+          from pathlib import Path
+
+          new = pd.read_parquet("data/processed/annotated_new.parquet")
+          old_path = Path("data/processed/annotated.parquet")
+
+          if old_path.exists():
+              old = pd.read_parquet(old_path)
+              merged = (
+                  pd.concat([old, new])
+                  .drop_duplicates("id")
+                  .sort_values("created_utc")
+                  .reset_index(drop=True)
+              )
+          else:
+              merged = new
+
+          merged.to_parquet(old_path, index=False)
+          print(f"Merged: {len(merged)} total records ({len(new)} new collected)")
+          EOF
 
       - name: Commit updated data
         run: |
