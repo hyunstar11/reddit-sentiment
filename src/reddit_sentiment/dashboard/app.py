@@ -151,6 +151,13 @@ def run_brand_correlation(df_json: str):
     return PriceCorrelationAnalyzer().analyze_brand_level(df)
 
 
+@st.cache_data(show_spinner=False)
+def run_brand_signals(df_json: str, min_mentions: int):
+    from reddit_sentiment.analysis.brand_signals import BrandIntelligenceAnalyzer
+    df = pd.read_json(io.StringIO(df_json), orient="split")
+    return BrandIntelligenceAnalyzer().analyze(df, min_mentions=min_mentions)
+
+
 def _to_json(df: pd.DataFrame) -> str:
     """Serialize DataFrame to JSON for cache key (handles datetime columns)."""
     df = df.copy()
@@ -586,6 +593,108 @@ def _tab_models(corr_result, has_ebay: bool, df_json: str = "") -> None:
 
 
 # ---------------------------------------------------------------------------
+# Brand Signals tab
+# ---------------------------------------------------------------------------
+
+_SIGNAL_COLORS = {
+    "🟢 Scale Up": "#22c55e",
+    "🟡 Hold": "#eab308",
+    "🔴 Watch": "#ef4444",
+}
+
+
+def _tab_brand_signals(intel_result) -> None:
+    import plotly.express as px
+
+    st.subheader("Brand Health Intelligence")
+    st.caption(
+        "Composite score combining StockX resale premium, deadstock volume, "
+        "Reddit sentiment, and purchase intent."
+    )
+
+    df = intel_result.summary_df
+    if df.empty:
+        st.info("No brand intelligence data available.")
+        return
+
+    # 1 — Hero table
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Health Score": st.column_config.ProgressColumn(
+                format="%.3f", min_value=0.0, max_value=1.0
+            ),
+            "Purchase Intent %": st.column_config.ProgressColumn(
+                format="%.1f%%", min_value=0, max_value=100
+            ),
+            "Avg Sentiment": st.column_config.NumberColumn(format="%+.4f"),
+        },
+    )
+
+    st.divider()
+
+    col_l, col_r = st.columns(2)
+
+    # 2 — Health Score bar chart
+    with col_l:
+        bar_df = df[["Brand", "Health Score", "Signal"]].sort_values(
+            "Health Score", ascending=True
+        )
+        fig_bar = px.bar(
+            bar_df,
+            x="Health Score",
+            y="Brand",
+            orientation="h",
+            color="Signal",
+            color_discrete_map=_SIGNAL_COLORS,
+            text="Health Score",
+            title="Brand Health Score",
+        )
+        fig_bar.update_traces(texttemplate="%{text:.3f}", textposition="outside")
+        fig_bar.update_layout(
+            plot_bgcolor="white",
+            height=350,
+            margin=dict(l=10, r=60, t=50, b=10),
+            showlegend=True,
+        )
+        st.plotly_chart(fig_bar, width="stretch")
+
+    # 3 — Sentiment vs Premium scatter
+    with col_r:
+        scatter_df = df[["Brand", "Avg Sentiment", "StockX Premium %", "Mentions", "Signal"]].copy()
+        # Give brands with 0 mentions a minimum bubble size for visibility
+        scatter_df["_size"] = scatter_df["Mentions"].clip(lower=5)
+        fig_scatter = px.scatter(
+            scatter_df,
+            x="Avg Sentiment",
+            y="StockX Premium %",
+            text="Brand",
+            size="_size",
+            color="Signal",
+            color_discrete_map=_SIGNAL_COLORS,
+            labels={
+                "Avg Sentiment": "Avg Reddit Sentiment",
+                "StockX Premium %": "StockX Resale Premium (%)",
+            },
+            title="Sentiment vs. StockX Premium",
+        )
+        fig_scatter.update_traces(
+            textposition="top center",
+            marker=dict(line=dict(width=1, color="white")),
+        )
+        fig_scatter.add_vline(x=0, line_dash="dash", line_color="gray", opacity=0.5)
+        fig_scatter.update_layout(
+            plot_bgcolor="white",
+            height=350,
+            margin=dict(l=10, r=10, t=50, b=10),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_scatter, width="stretch")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -626,18 +735,20 @@ def main() -> None:
         narrative = run_narrative_analysis(df_json)
         trends = run_trend_analysis(df_json)
         corr_result = run_model_analysis(df_json, ebay_json)
+        intel_result = run_brand_signals(df_json, min_mentions)
 
     # KPI strip
     _kpi_cards(df, brand_metrics, attribution)
     st.divider()
 
     # Tabs
-    tab_ov, tab_br, tab_ch, tab_th, tab_mo = st.tabs([
+    tab_ov, tab_br, tab_ch, tab_th, tab_mo, tab_intel = st.tabs([
         "📊 Overview",
         "🏷️ Brands",
         "🛒 Channels",
         "💬 Themes",
         "👟 Models",
+        "🎯 Brand Signals",
     ])
 
     with tab_ov:
@@ -654,6 +765,9 @@ def main() -> None:
 
     with tab_mo:
         _tab_models(corr_result, has_ebay=not ebay_df.empty, df_json=df_json)
+
+    with tab_intel:
+        _tab_brand_signals(intel_result)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,16 @@ STOCKX_BRAND_PREMIUMS: dict[str, float] = {
     "Puma":        0.4500,
 }
 
+# Extended market snapshot: StockX premium + deadstock volume from sneakers2023.csv (NB08).
+# volatility tier: "low" | "medium" | "high"
+STOCKX_BRAND_MARKET: dict[str, dict[str, object]] = {
+    "Adidas":      {"premium": 0.3070, "avg_deadstock": 9630,  "volatility": "medium"},
+    "Asics":       {"premium": 0.1290, "avg_deadstock": 1000,  "volatility": "low"},
+    "New Balance": {"premium": 0.2185, "avg_deadstock": 2886,  "volatility": "low"},
+    "Nike":        {"premium": 0.1770, "avg_deadstock": 6265,  "volatility": "medium"},
+    "Puma":        {"premium": 0.4500, "avg_deadstock": 2967,  "volatility": "low"},
+}
+
 
 @dataclass
 class BrandSignal:
