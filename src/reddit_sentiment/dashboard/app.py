@@ -158,6 +158,13 @@ def run_brand_signals(df_json: str, min_mentions: int):
     return BrandIntelligenceAnalyzer().analyze(df, min_mentions=min_mentions)
 
 
+@st.cache_data(show_spinner=False)
+def run_model_intelligence(df_json: str):
+    from reddit_sentiment.analysis.model_intelligence import ModelIntelligenceAnalyzer
+    df = pd.read_json(io.StringIO(df_json), orient="split")
+    return ModelIntelligenceAnalyzer().analyze(df)
+
+
 def _to_json(df: pd.DataFrame) -> str:
     """Serialize DataFrame to JSON for cache key (handles datetime columns)."""
     df = df.copy()
@@ -695,6 +702,121 @@ def _tab_brand_signals(intel_result) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Model Intelligence tab
+# ---------------------------------------------------------------------------
+
+_TIER_COLORS = {"High": "#22c55e", "Medium": "#eab308", "Low": "#ef4444"}
+
+
+def _tab_model_intelligence(result) -> None:
+    import plotly.express as px
+
+    st.subheader("Model Intelligence")
+    st.caption(
+        "ML demand signal (sneaker-intel ensemble trained on StockX 2017–2019) "
+        "combined with live Reddit sentiment. Demand Score = global percentile rank "
+        "by predicted sale/retail multiplier."
+    )
+
+    if result.predictions_meta:
+        st.caption(
+            f"Predictions: {result.predictions_meta.get('model_source', '')} · "
+            f"Generated {result.predictions_meta.get('generated_at', '')}"
+        )
+
+    df = result.summary_df
+    if df.empty:
+        st.info("Model predictions not found. Ensure model_predictions.json exists.")
+        return
+
+    # Brand filter
+    brands = sorted(df["Brand"].unique())
+    selected = st.multiselect(
+        "Filter by brand", options=brands, default=brands, key="mintel_brand_filter"
+    )
+    if selected:
+        df = df[df["Brand"].isin(selected)]
+
+    # 1 — Table
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Demand Score": st.column_config.ProgressColumn(
+                format="%.2f", min_value=0.0, max_value=1.0
+            ),
+            "Combined Score": st.column_config.ProgressColumn(
+                format="%.2f", min_value=0.0, max_value=1.0
+            ),
+            "Avg Sentiment": st.column_config.NumberColumn(format="%+.4f"),
+            "Positive %": st.column_config.ProgressColumn(
+                format="%.1f%%", min_value=0, max_value=100
+            ),
+            "Negative %": st.column_config.ProgressColumn(
+                format="%.1f%%", min_value=0, max_value=100
+            ),
+        },
+    )
+
+    st.divider()
+    col_l, col_r = st.columns(2)
+
+    # 2 — Combined Score bar (top 15)
+    with col_l:
+        top = df.nlargest(15, "Combined Score")
+        fig = px.bar(
+            top.sort_values("Combined Score"),
+            x="Combined Score",
+            y="Model",
+            color="Demand Tier",
+            color_discrete_map=_TIER_COLORS,
+            orientation="h",
+            text="Combined Score",
+            title="Top 15 Models — Combined Score",
+        )
+        fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+        fig.update_layout(
+            plot_bgcolor="white",
+            height=450,
+            margin=dict(l=10, r=60, t=50, b=10),
+            showlegend=True,
+        )
+        st.plotly_chart(fig, width="stretch")
+
+    # 3 — Demand Score vs Reddit Sentiment scatter
+    with col_r:
+        plot_df = df.copy()
+        plot_df["_size"] = plot_df["Reddit Mentions"].clip(lower=3)
+        fig2 = px.scatter(
+            plot_df,
+            x="Demand Score",
+            y="Avg Sentiment",
+            text="Model",
+            size="_size",
+            color="Demand Tier",
+            color_discrete_map=_TIER_COLORS,
+            labels={
+                "Demand Score": "ML Demand Score (percentile)",
+                "Avg Sentiment": "Avg Reddit Sentiment",
+            },
+            title="ML Demand vs. Reddit Sentiment",
+        )
+        fig2.update_traces(
+            textposition="top center",
+            marker=dict(line=dict(width=1, color="white")),
+        )
+        fig2.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+        fig2.update_layout(
+            plot_bgcolor="white",
+            height=450,
+            margin=dict(l=10, r=10, t=50, b=10),
+            showlegend=False,
+        )
+        st.plotly_chart(fig2, width="stretch")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -736,19 +858,21 @@ def main() -> None:
         trends = run_trend_analysis(df_json)
         corr_result = run_model_analysis(df_json, ebay_json)
         intel_result = run_brand_signals(df_json, min_mentions)
+        model_intel_result = run_model_intelligence(df_json)
 
     # KPI strip
     _kpi_cards(df, brand_metrics, attribution)
     st.divider()
 
     # Tabs
-    tab_ov, tab_br, tab_ch, tab_th, tab_mo, tab_intel = st.tabs([
+    tab_ov, tab_br, tab_ch, tab_th, tab_mo, tab_intel, tab_mintel = st.tabs([
         "📊 Overview",
         "🏷️ Brands",
         "🛒 Channels",
         "💬 Themes",
         "👟 Models",
         "🎯 Brand Signals",
+        "🔬 Model Intelligence",
     ])
 
     with tab_ov:
@@ -768,6 +892,9 @@ def main() -> None:
 
     with tab_intel:
         _tab_brand_signals(intel_result)
+
+    with tab_mintel:
+        _tab_model_intelligence(model_intel_result)
 
 
 if __name__ == "__main__":

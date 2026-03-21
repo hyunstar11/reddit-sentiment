@@ -19,6 +19,7 @@ env/
 data/raw/
 data/processed/*
 !data/processed/annotated.parquet
+!data/processed/model_predictions.json
 data/reports/
 
 # Pytest / coverage

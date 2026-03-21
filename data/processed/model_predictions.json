@@ -1,0 +1,303 @@
+{
+  "generated_at": "2026-03-21",
+  "model_source": "sneaker-intel ensemble (RF+XGB+LGB) trained on StockX 2017-2019",
+  "note": "demand_score = global percentile rank by demand_multiplier (predicted_sale/retail). Higher = stronger historical demand signal.",
+  "models": [
+    {
+      "model": "Air Jordan 1",
+      "brand": "Nike",
+      "retail_price": 180.0,
+      "demand_multiplier": 11.341,
+      "demand_score": 1.0,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Air Jordan 3",
+      "brand": "Nike",
+      "retail_price": 200.0,
+      "demand_multiplier": 10.099,
+      "demand_score": 0.9595,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Air Jordan 4",
+      "brand": "Nike",
+      "retail_price": 210.0,
+      "demand_multiplier": 9.618,
+      "demand_score": 0.9054,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Air Jordan 5",
+      "brand": "Nike",
+      "retail_price": 210.0,
+      "demand_multiplier": 9.618,
+      "demand_score": 0.9054,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Air Jordan 11",
+      "brand": "Nike",
+      "retail_price": 220.0,
+      "demand_multiplier": 9.181,
+      "demand_score": 0.8649,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Air Jordan 12",
+      "brand": "Nike",
+      "retail_price": 200.0,
+      "demand_multiplier": 10.099,
+      "demand_score": 0.9595,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Dunk Low",
+      "brand": "Nike",
+      "retail_price": 110.0,
+      "demand_multiplier": 6.563,
+      "demand_score": 0.5946,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Dunk High",
+      "brand": "Nike",
+      "retail_price": 110.0,
+      "demand_multiplier": 6.563,
+      "demand_score": 0.5946,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Air Force 1",
+      "brand": "Nike",
+      "retail_price": 110.0,
+      "demand_multiplier": 7.466,
+      "demand_score": 0.8108,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Air Max 90",
+      "brand": "Nike",
+      "retail_price": 120.0,
+      "demand_multiplier": 5.911,
+      "demand_score": 0.5405,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Air Max 95",
+      "brand": "Nike",
+      "retail_price": 160.0,
+      "demand_multiplier": 4.502,
+      "demand_score": 0.3378,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Air Max 97",
+      "brand": "Nike",
+      "retail_price": 175.0,
+      "demand_multiplier": 4.471,
+      "demand_score": 0.2973,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Air Max 1",
+      "brand": "Nike",
+      "retail_price": 130.0,
+      "demand_multiplier": 5.553,
+      "demand_score": 0.5,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Air Max Plus",
+      "brand": "Nike",
+      "retail_price": 165.0,
+      "demand_multiplier": 4.366,
+      "demand_score": 0.2568,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Pegasus",
+      "brand": "Nike",
+      "retail_price": 130.0,
+      "demand_multiplier": 5.22,
+      "demand_score": 0.4595,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Vaporfly",
+      "brand": "Nike",
+      "retail_price": 260.0,
+      "demand_multiplier": 2.445,
+      "demand_score": 0.1081,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Alphafly",
+      "brand": "Nike",
+      "retail_price": 285.0,
+      "demand_multiplier": 2.231,
+      "demand_score": 0.0541,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Yeezy 350",
+      "brand": "Adidas",
+      "retail_price": 230.0,
+      "demand_multiplier": 2.185,
+      "demand_score": 0.027,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Yeezy 380",
+      "brand": "Adidas",
+      "retail_price": 230.0,
+      "demand_multiplier": 2.866,
+      "demand_score": 0.1351,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Yeezy 500",
+      "brand": "Adidas",
+      "retail_price": 200.0,
+      "demand_multiplier": 3.296,
+      "demand_score": 0.1622,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Yeezy 700",
+      "brand": "Adidas",
+      "retail_price": 300.0,
+      "demand_multiplier": 2.272,
+      "demand_score": 0.0811,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Samba",
+      "brand": "Adidas",
+      "retail_price": 100.0,
+      "demand_multiplier": 7.219,
+      "demand_score": 0.7162,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Gazelle",
+      "brand": "Adidas",
+      "retail_price": 100.0,
+      "demand_multiplier": 7.219,
+      "demand_score": 0.7162,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Campus 00s",
+      "brand": "Adidas",
+      "retail_price": 100.0,
+      "demand_multiplier": 7.219,
+      "demand_score": 0.7162,
+      "demand_tier": "High"
+    },
+    {
+      "model": "NMD R1",
+      "brand": "Adidas",
+      "retail_price": 130.0,
+      "demand_multiplier": 5.553,
+      "demand_score": 0.5,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Ultraboost",
+      "brand": "Adidas",
+      "retail_price": 190.0,
+      "demand_multiplier": 3.678,
+      "demand_score": 0.1892,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Stan Smith",
+      "brand": "Adidas",
+      "retail_price": 100.0,
+      "demand_multiplier": 7.219,
+      "demand_score": 0.7162,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Forum Low",
+      "brand": "Adidas",
+      "retail_price": 100.0,
+      "demand_multiplier": 7.219,
+      "demand_score": 0.7162,
+      "demand_tier": "High"
+    },
+    {
+      "model": "NB 550",
+      "brand": "New Balance",
+      "retail_price": 110.0,
+      "demand_multiplier": 6.563,
+      "demand_score": 0.5946,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "NB 990",
+      "brand": "New Balance",
+      "retail_price": 185.0,
+      "demand_multiplier": 3.838,
+      "demand_score": 0.2162,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "NB 2002R",
+      "brand": "New Balance",
+      "retail_price": 150.0,
+      "demand_multiplier": 4.802,
+      "demand_score": 0.3919,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "NB 1906R",
+      "brand": "New Balance",
+      "retail_price": 150.0,
+      "demand_multiplier": 4.802,
+      "demand_score": 0.3919,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "NB 574",
+      "brand": "New Balance",
+      "retail_price": 90.0,
+      "demand_multiplier": 8.021,
+      "demand_score": 0.8378,
+      "demand_tier": "High"
+    },
+    {
+      "model": "Clifton 9",
+      "brand": "Hoka",
+      "retail_price": 145.0,
+      "demand_multiplier": 4.971,
+      "demand_score": 0.4324,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Bondi 8",
+      "brand": "Hoka",
+      "retail_price": 165.0,
+      "demand_multiplier": 4.366,
+      "demand_score": 0.2568,
+      "demand_tier": "Low"
+    },
+    {
+      "model": "Gel-Kayano",
+      "brand": "Asics",
+      "retail_price": 160.0,
+      "demand_multiplier": 4.502,
+      "demand_score": 0.3378,
+      "demand_tier": "Medium"
+    },
+    {
+      "model": "Speedcat",
+      "brand": "Puma",
+      "retail_price": 100.0,
+      "demand_multiplier": 7.219,
+      "demand_score": 0.7162,
+      "demand_tier": "High"
+    }
+  ]
+}
