@@ -165,6 +165,14 @@ def run_model_intelligence(df_json: str):
     return ModelIntelligenceAnalyzer().analyze(df)
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_health_history() -> pd.DataFrame:
+    path = _ROOT / "data" / "processed" / "health_score_history.csv"
+    if path.exists():
+        return pd.read_csv(path, parse_dates=["timestamp"])
+    return pd.DataFrame()
+
+
 def _to_json(df: pd.DataFrame) -> str:
     """Serialize DataFrame to JSON for cache key (handles datetime columns)."""
     df = df.copy()
@@ -699,6 +707,32 @@ def _tab_brand_signals(intel_result) -> None:
             showlegend=False,
         )
         st.plotly_chart(fig_scatter, width="stretch")
+
+    # 4 — Health score trend over time
+    history = load_health_history()
+    if not history.empty and history["timestamp"].nunique() >= 2:
+        st.divider()
+        st.subheader("Brand Health Score — Historical Trend")
+        fig_trend = px.line(
+            history.sort_values("timestamp"),
+            x="timestamp",
+            y="health_score",
+            color="brand",
+            markers=True,
+            labels={"timestamp": "", "health_score": "Health Score", "brand": "Brand"},
+            title="Brand Health Score Over Time",
+        )
+        fig_trend.update_layout(
+            plot_bgcolor="white",
+            height=380,
+            margin=dict(l=10, r=10, t=50, b=10),
+            yaxis=dict(range=[0, 1]),
+        )
+        fig_trend.add_hline(y=0.6, line_dash="dot", line_color="#22c55e",
+                            opacity=0.4, annotation_text="Scale Up threshold")
+        fig_trend.add_hline(y=0.4, line_dash="dot", line_color="#eab308",
+                            opacity=0.4, annotation_text="Watch threshold")
+        st.plotly_chart(fig_trend, width="stretch")
 
 
 # ---------------------------------------------------------------------------

@@ -55,10 +55,48 @@ jobs:
           print(f"Merged: {len(merged)} total records ({len(new)} new collected)")
           EOF
 
+      - name: Append brand health score snapshot
+        run: |
+          uv run python - <<'EOF'
+          import pandas as pd
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          annotated_path = Path("data/processed/annotated.parquet")
+          history_path = Path("data/processed/health_score_history.csv")
+
+          if not annotated_path.exists():
+              print("annotated.parquet not found, skipping health score snapshot")
+              raise SystemExit(0)
+
+          from reddit_sentiment.analysis.brand_signals import BrandIntelligenceAnalyzer
+
+          df = pd.read_parquet(annotated_path)
+          result = BrandIntelligenceAnalyzer().analyze(df, min_mentions=3)
+
+          now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+          rows = [
+              {"timestamp": now, "brand": r.brand, "health_score": round(r.health_score, 4),
+               "signal": r.signal, "avg_sentiment": r.avg_sentiment,
+               "mention_count": r.mention_count}
+              for r in result.brands
+          ]
+          snapshot = pd.DataFrame(rows)
+
+          if history_path.exists():
+              history = pd.read_csv(history_path)
+              history = pd.concat([history, snapshot], ignore_index=True)
+          else:
+              history = snapshot
+
+          history.to_csv(history_path, index=False)
+          print(f"Health score snapshot saved: {len(rows)} brands at {now}")
+          EOF
+
       - name: Commit updated data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/processed/annotated.parquet
+          git add data/processed/annotated.parquet data/processed/health_score_history.csv
           git diff --staged --quiet || git commit -m "chore: weekly data refresh $(date -u +%Y-%m-%d)"
           git push

@@ -20,6 +20,7 @@ data/raw/
 data/processed/*
 !data/processed/annotated.parquet
 !data/processed/model_predictions.json
+!data/processed/health_score_history.csv
 data/reports/
 
 # Pytest / coverage
