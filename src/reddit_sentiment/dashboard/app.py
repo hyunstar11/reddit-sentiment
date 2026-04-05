@@ -173,6 +173,34 @@ def load_health_history() -> pd.DataFrame:
     return pd.DataFrame()
 
 
+def _detect_signal_changes(history: pd.DataFrame) -> list[dict]:
+    """Compare the two most recent snapshots; return list of brand signal changes."""
+    if history.empty or "signal" not in history.columns:
+        return []
+    timestamps = sorted(history["timestamp"].unique())
+    if len(timestamps) < 2:
+        return []
+    prev_ts, curr_ts = timestamps[-2], timestamps[-1]
+    prev = history[history["timestamp"] == prev_ts].set_index("brand")
+    curr = history[history["timestamp"] == curr_ts].set_index("brand")
+    changes = []
+    for brand in curr.index:
+        if brand not in prev.index:
+            continue
+        old_sig = prev.loc[brand, "signal"]
+        new_sig = curr.loc[brand, "signal"]
+        old_score = prev.loc[brand, "health_score"]
+        new_score = curr.loc[brand, "health_score"]
+        if old_sig != new_sig:
+            changes.append({
+                "brand": brand,
+                "from": old_sig,
+                "to": new_sig,
+                "delta": new_score - old_score,
+            })
+    return changes
+
+
 def _to_json(df: pd.DataFrame) -> str:
     """Serialize DataFrame to JSON for cache key (handles datetime columns)."""
     df = df.copy()
@@ -708,11 +736,27 @@ def _tab_brand_signals(intel_result) -> None:
         )
         st.plotly_chart(fig_scatter, width="stretch")
 
-    # 4 — Health score trend over time
+    # 4 — Signal change alerts
     history = load_health_history()
-    if not history.empty and history["timestamp"].nunique() >= 2:
+    changes = _detect_signal_changes(history)
+    if changes:
         st.divider()
-        st.subheader("Brand Health Score — Historical Trend")
+        st.subheader("⚡ Signal Changes Since Last Refresh")
+        for ch in changes:
+            direction = "upgraded" if ch["delta"] > 0 else "downgraded"
+            colour = "green" if ch["delta"] > 0 else "red"
+            st.markdown(
+                f":{colour}[**{ch['brand']}** {direction}: "
+                f"{ch['from']} → {ch['to']} "
+                f"(score {ch['delta']:+.3f})]"
+            )
+
+    # 5 — Health score trend + 30-day forecast
+    if not history.empty and history["timestamp"].nunique() >= 2:
+        import numpy as np
+
+        st.divider()
+        st.subheader("Brand Health Score — Trend & 30-Day Forecast")
         fig_trend = px.line(
             history.sort_values("timestamp"),
             x="timestamp",
@@ -720,19 +764,60 @@ def _tab_brand_signals(intel_result) -> None:
             color="brand",
             markers=True,
             labels={"timestamp": "", "health_score": "Health Score", "brand": "Brand"},
-            title="Brand Health Score Over Time",
+            title="Brand Health Score Over Time (dashed = 30-day projection)",
         )
+
+        # Add forecast traces per brand
+        brand_colors = {
+            trace.name: trace.line.color
+            for trace in fig_trend.data
+        }
+        last_ts = history["timestamp"].max()
+        future_ts = last_ts + pd.Timedelta(days=30)
+        for brand in history["brand"].unique():
+            bdf = history[history["brand"] == brand].sort_values("timestamp")
+            if len(bdf) < 2:
+                continue
+            # Convert timestamps to numeric (days since first point)
+            t0 = bdf["timestamp"].iloc[0]
+            x_num = (bdf["timestamp"] - t0).dt.total_seconds() / 86400
+            y_vals = bdf["health_score"].values
+            slope, intercept = np.polyfit(x_num, y_vals, 1)
+            x_future = (future_ts - t0).total_seconds() / 86400
+            y_future = float(np.clip(intercept + slope * x_future, 0.0, 1.0))
+            color = brand_colors.get(brand, "#888888")
+            fig_trend.add_scatter(
+                x=[last_ts, future_ts],
+                y=[float(bdf["health_score"].iloc[-1]), y_future],
+                mode="lines",
+                line=dict(dash="dash", color=color, width=1.5),
+                showlegend=False,
+                hovertemplate=(
+                    f"<b>{brand}</b> (projected)<br>"
+                    f"Score: {y_future:.3f}<extra></extra>"
+                ),
+            )
+
         fig_trend.update_layout(
             plot_bgcolor="white",
-            height=380,
+            height=420,
             margin=dict(l=10, r=10, t=50, b=10),
             yaxis=dict(range=[0, 1]),
         )
-        fig_trend.add_hline(y=0.6, line_dash="dot", line_color="#22c55e",
-                            opacity=0.4, annotation_text="Scale Up threshold")
-        fig_trend.add_hline(y=0.4, line_dash="dot", line_color="#eab308",
-                            opacity=0.4, annotation_text="Watch threshold")
+        fig_trend.add_hline(
+            y=0.6, line_dash="dot", line_color="#22c55e",
+            opacity=0.4, annotation_text="Scale Up threshold",
+        )
+        fig_trend.add_hline(
+            y=0.4, line_dash="dot", line_color="#eab308",
+            opacity=0.4, annotation_text="Watch threshold",
+        )
         st.plotly_chart(fig_trend, width="stretch")
+        n_pts = history["timestamp"].nunique()
+        st.caption(
+            f"Forecast based on linear trend across {n_pts} snapshots. "
+            "Accuracy improves as more data accumulates."
+        )
 
 
 # ---------------------------------------------------------------------------
