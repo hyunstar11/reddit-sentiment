@@ -464,3 +464,8 @@ timestamp,brand,health_score,signal,avg_sentiment,mention_count
 2026-04-13 00:13,New Balance,0.2684,🔴 Watch,0.2642,187
 2026-04-13 00:13,Nike,0.3623,🔴 Watch,0.1969,2267
 2026-04-13 00:13,Puma,0.657,🟢 Scale Up,0.4546,30
+2026-04-13 06:38,Adidas,0.684,🟢 Scale Up,0.2848,978
+2026-04-13 06:38,Asics,0.2096,🔴 Watch,0.3473,79
+2026-04-13 06:38,New Balance,0.2685,🔴 Watch,0.2642,187
+2026-04-13 06:38,Nike,0.3623,🔴 Watch,0.1967,2278
+2026-04-13 06:38,Puma,0.657,🟢 Scale Up,0.4546,30
