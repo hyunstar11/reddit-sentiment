@@ -12,11 +12,14 @@ from __future__ import annotations
 import re
 import time
 import xml.etree.ElementTree as ET
+from dataclasses import fields
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 import requests
+from urllib3.exceptions import InvalidHeader
+from urllib3.util.retry import Retry
 
 from reddit_sentiment.collection.schemas import RedditPost
 from reddit_sentiment.config import CollectionConfig
@@ -29,6 +32,11 @@ _HEADERS = {
     "Accept": "application/atom+xml, application/rss+xml, text/xml",
 }
 _REQUEST_DELAY = 2.0  # seconds between subreddit requests
+_MAX_RETRY_WAIT = 60
+
+
+class _RateLimited(Exception):
+    """Reddit asked us to pause collection for this run."""
 
 
 def _extract_urls(text: str) -> list[str]:
@@ -123,18 +131,24 @@ class RSSSubredditCollector:
     def _fetch_subreddit(self, subreddit: str) -> list[dict]:
         """Fetch the most recent posts from a subreddit via its RSS feed."""
         url = _RSS_URL.format(subreddit=subreddit)
-        try:
+        resp = self._session.get(url, timeout=20)
+        if resp.status_code == 429:
+            try:
+                delay = Retry().get_retry_after(resp)
+            except InvalidHeader:
+                delay = None
+            wait = 30 if delay is None else max(_REQUEST_DELAY, delay)
+            if wait > _MAX_RETRY_WAIT:
+                raise _RateLimited(f"r/{subreddit} returned HTTP 429 (retry after {wait:g}s)")
+            print(f"[collect] r/{subreddit} returned HTTP 429; retrying in {wait:g}s")
+            time.sleep(wait)
             resp = self._session.get(url, timeout=20)
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            print(f"  [!] RSS error for r/{subreddit}: {exc}")
-            return []
-
-        try:
-            root = ET.fromstring(resp.content)
-        except ET.ParseError as exc:
-            print(f"  [!] XML parse error for r/{subreddit}: {exc}")
-            return []
+            if resp.status_code == 429:
+                raise _RateLimited(f"r/{subreddit} still returned HTTP 429 after retry")
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        if root.tag != f"{{{_ATOM_NS}}}feed":
+            raise ValueError("Expected a Reddit Atom feed")
 
         entries = root.findall(f"{{{_ATOM_NS}}}entry")
         return [_parse_rss_entry(e, subreddit).to_dict() for e in entries]
@@ -146,14 +160,27 @@ class RSSSubredditCollector:
             output_path = self._cfg.raw_data_dir / f"posts_{timestamp}.parquet"
 
         all_records: list[dict] = []
+        successful_feeds = 0
         for sub_name in self._cfg.subreddits:
             print(f"[collect] r/{sub_name} via RSS …")
-            records = self._fetch_subreddit(sub_name)
-            all_records.extend(records)
-            print(f"  {len(records)} posts")
+            try:
+                records = self._fetch_subreddit(sub_name)
+            except _RateLimited as exc:
+                print(f"[collect] {exc}; deferring remaining feeds until the next run")
+                break
+            except (requests.RequestException, ET.ParseError, ValueError) as exc:
+                print(f"[collect] RSS error for r/{sub_name}: {exc}")
+            else:
+                successful_feeds += 1
+                all_records.extend(records)
+                print(f"  {len(records)} posts")
             time.sleep(_REQUEST_DELAY)
+        else:
+            if self._cfg.subreddits and not successful_feeds:
+                raise RuntimeError("All Reddit RSS feeds failed; see feed errors above")
 
-        df = pd.DataFrame(all_records)
+        columns = [f.name for f in fields(RedditPost)] + ["record_type"]
+        df = pd.DataFrame(all_records, columns=columns)
         if not df.empty and "extracted_urls" in df.columns:
             df["extracted_urls"] = df["extracted_urls"].apply(
                 lambda x: x if isinstance(x, list) else []
