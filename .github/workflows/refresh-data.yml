@@ -22,9 +22,18 @@ jobs:
         run: uv sync
 
       - name: Collect posts via RSS
-        run: uv run reddit-sentiment collect --rss --output data/raw/posts_new.parquet
+        id: collect
+        run: |
+          uv run reddit-sentiment collect --rss --output data/raw/posts_new.parquet
+          rows=$(uv run python -c 'from pyarrow.parquet import read_metadata; print(read_metadata("data/raw/posts_new.parquet").num_rows)')
+          echo "rows=$rows" >> "$GITHUB_OUTPUT"
+          if [ "$rows" -eq 0 ]; then
+            echo "::warning::No Reddit posts collected. Refresh deferred until the next run."
+            echo "No posts collected. The existing dataset and score history were preserved." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Run sentiment analysis on new posts
+        if: steps.collect.outputs.rows != '0'
         run: >
           uv run reddit-sentiment analyze
           --input data/raw/posts_new.parquet
@@ -32,6 +41,7 @@ jobs:
           --no-transformer
 
       - name: Merge new data into annotated.parquet
+        if: steps.collect.outputs.rows != '0'
         run: |
           uv run python - <<'EOF'
           import pandas as pd
@@ -56,6 +66,7 @@ jobs:
           EOF
 
       - name: Append brand health score snapshot
+        if: steps.collect.outputs.rows != '0'
         run: |
           uv run python - <<'EOF'
           import pandas as pd
@@ -94,6 +105,7 @@ jobs:
           EOF
 
       - name: Commit updated data
+        if: steps.collect.outputs.rows != '0'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

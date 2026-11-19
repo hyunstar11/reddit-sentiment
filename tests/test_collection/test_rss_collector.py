@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
+import requests
 
 from reddit_sentiment.collection.rss_collector import (
     RSSSubredditCollector,
@@ -168,15 +170,13 @@ def test_fetch_subreddit_returns_records(tmp_path):
     assert all(r["record_type"] == "post" for r in records)
 
 
-def test_fetch_subreddit_handles_request_error(tmp_path):
-    import requests as req
-
+def test_collect_reports_total_feed_failure(tmp_path):
     collector = _make_collector(tmp_path)
     collector._session = MagicMock()
-    collector._session.get.side_effect = req.RequestException("timeout")
-
-    records = collector._fetch_subreddit("Sneakers")
-    assert records == []
+    collector._session.get.side_effect = requests.RequestException("timeout")
+    with patch("reddit_sentiment.collection.rss_collector.time.sleep"):
+        with pytest.raises(RuntimeError, match="All Reddit RSS feeds failed"):
+            collector.collect()
 
 
 def test_fetch_subreddit_handles_bad_xml(tmp_path):
@@ -187,8 +187,9 @@ def test_fetch_subreddit_handles_bad_xml(tmp_path):
     collector._session = MagicMock()
     collector._session.get.return_value = mock_resp
 
-    records = collector._fetch_subreddit("Sneakers")
-    assert records == []
+    with patch("reddit_sentiment.collection.rss_collector.time.sleep"):
+        with pytest.raises(RuntimeError, match="All Reddit RSS feeds failed"):
+            collector.collect()
 
 
 def test_fetch_subreddit_empty_feed(tmp_path):
@@ -240,6 +241,54 @@ def test_collect_multi_subreddit(tmp_path):
 
     df = pd.read_parquet(out)
     assert len(df) == 2  # 1 post per subreddit
+
+
+def _response(status, body=b"", retry_after=None):
+    response = requests.Response()
+    response.status_code = status
+    response._content = body
+    if retry_after is not None:
+        response.headers["Retry-After"] = retry_after
+    return response
+
+
+def test_rate_limit_retry_recovers(tmp_path):
+    collector = _make_collector(tmp_path)
+    collector._session = MagicMock()
+    collector._session.get.side_effect = [
+        _response(429, retry_after="7"), _response(200, _atom_feed(_entry_xml())),
+    ]
+    with patch("reddit_sentiment.collection.rss_collector.time.sleep") as sleep:
+        records = collector._fetch_subreddit("Sneakers")
+    sleep.assert_called_once_with(7)
+    assert records[0]["id"] == "abc123"
+
+
+@pytest.mark.parametrize("responses", [
+    [_response(429), _response(429)],
+    [_response(429, retry_after="600")],
+    [_response(200, _atom_feed("")), _response(200, _atom_feed(""))],
+])
+def test_deferred_and_empty_batches_are_readable(tmp_path, responses):
+    collector = _make_collector(tmp_path, subreddits=("Sneakers", "Nike"))
+    collector._session = MagicMock()
+    collector._session.get.side_effect = responses
+    with patch("reddit_sentiment.collection.rss_collector.time.sleep"):
+        df = pd.read_parquet(collector.collect())
+    assert df.empty
+    assert {"id", "full_text", "record_type"} <= set(df.columns)
+    assert collector._session.get.call_count == len(responses)
+
+
+def test_rate_limit_keeps_posts_already_collected(tmp_path):
+    collector = _make_collector(tmp_path, subreddits=("Sneakers", "Nike"))
+    collector._session = MagicMock()
+    collector._session.get.side_effect = [
+        _response(200, _atom_feed(_entry_xml())), _response(429, retry_after="600"),
+    ]
+    with patch("reddit_sentiment.collection.rss_collector.time.sleep"):
+        df = pd.read_parquet(collector.collect())
+    assert df["id"].tolist() == ["abc123"]
 
 
 def test_load_latest(tmp_path):
